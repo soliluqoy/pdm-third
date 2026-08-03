@@ -3,7 +3,7 @@
 
 Usage:
     python tools/smoke.py patch-overheat 5     # set overheat sustain window (s)
-    python tools/smoke.py status               # issues, tasks, health snapshot
+    python tools/smoke.py status               # alerts, work orders, health snapshot
 """
 import json
 import sys
@@ -26,20 +26,22 @@ def main() -> int:
 
     if cmd == "patch-overheat":
         seconds = int(sys.argv[2])
-        rules = call("GET", "/api/v1/settings/rules")
+        rules = call("GET", "/api/v1/rules")
         rule = next(r for r in rules if r["key"] == "overheat")
-        print(call("PATCH", f"/api/v1/settings/rules/{rule['id']}",
+        print(call("PATCH", f"/api/v1/rules/{rule['id']}",
                    {"duration_seconds": seconds}))
         return 0
 
     if cmd == "status":
-        issues = call("GET", "/api/v1/issues?status=active")
-        print("active issues:", [
-            (i["title"], i["severity"], i["message"][:70]) for i in issues
+        alerts = call("GET", "/api/v1/alerts?status=active")
+        print("active alerts:", [
+            (a["vehicle_name"], a["title"], a["severity"],
+             f"x{a['occurrence_count']}", a["message"][:70]) for a in alerts
         ])
-        tasks = call("GET", "/api/v1/tasks?status=suggested")
-        print("suggested tasks:", [
-            (t["title"], t["priority"], (t["description"] or "")[:70]) for t in tasks
+        wos = call("GET", "/api/v1/workorders?status=suggested")
+        print("suggested work orders:", [
+            (w["vehicle_name"], w["title"], w["priority"],
+             (w["description"] or "")[:70]) for w in wos
         ])
         fleet = call("GET", "/api/v1/live/fleet")
         for car in fleet:

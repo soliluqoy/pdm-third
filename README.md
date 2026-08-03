@@ -1,16 +1,16 @@
 # PREDICT v3 — car health & maintenance, at a glance
 
-Reads your **Teltonika FMC001** (OBD-II plug-in) or **FMC150** (wired CAN) tracker
-and turns raw telemetry into everything a car owner needs:
+Reads your **Teltonika FMC001** (OBD-II plug-in dongle) or **FMC150** (wired CAN
+tracker) and turns raw telemetry into everything a car owner needs:
 
-- **Live dashboard** — every car's health, vitals, and anything needing attention,
-  visible with zero clicks.
+- **Live dashboard** — every car's health, vitals, and anything needing
+  attention, visible with zero clicks.
 - **Total history** — every sensor charted from 6 hours to a full year.
-- **Alerts** — rules catch overheating, weak batteries, fault codes, service
+- **Alerts** — rules catch overheating, weak batteries, fault codes, and service
   intervals. Active list + a permanent alert history.
 - **Work orders** — detections draft maintenance to-dos (approve them first —
-  shadow mode); completing one writes permanent maintenance history with
-  cost and odometer.
+  shadow mode); completing one writes permanent maintenance history with cost
+  and odometer.
 - **Driving** — trips, hard braking/acceleration, speeding, idling, daily score.
 
 ```
@@ -23,20 +23,21 @@ Car CAN ───→ FMC150 ┘                            ├─ ingest → rul
 ```
 
 **Two containers. That's it.** No MQTT broker, no Redis, no separate bridge —
-the tracker listener, rule engine, API, and dashboard all run in one process.
+the tracker listener, rule engine, REST API, WebSocket hub, and dashboard all
+run in one Python process.
 
 | Service | Port | Role |
 |---------|------|------|
-| `app` | 8000 | Dashboard + REST API + WebSocket |
-| `app` | 5123 | Teltonika AVL TCP (point trackers here) |
-| `db` | 5432 | TimescaleDB (PostgreSQL 16) |
+| `app` | 8000 | Dashboard (built SPA) + REST API `/api/v1` + WebSocket `/ws` |
+| `app` | 5123 | Teltonika AVL TCP listener (point trackers here) |
+| `db` | 5432 | TimescaleDB 2.17 (PostgreSQL 16) |
 
 ---
 
 ## Run it
 
 ```bash
-copy .env.example .env     # Windows (cp on Linux/macOS)
+copy .env.example .env     # Windows (use: cp .env.example .env  on Linux/macOS)
 docker compose up --build -d
 ```
 
@@ -48,13 +49,14 @@ For trackers to reach it from the road, port **5123** must be publicly reachable
 
 ## Add your car
 
-1. **Settings → Add car** — name, tracker IMEI, model (FMC001/FMC150).
+1. **Settings → Add car** — name, tracker IMEI, model (FMC001 / FMC150).
 2. The app shows a **text-message template** — SMS it to the tracker's SIM
    (or use Teltonika Configurator: server = `<HOST>:5123`, TCP,
-   Codec 8 Extended, send every 10 s).
+   **Codec 8 Extended**, send every 10 s).
 3. Within a minute the card on **Home** turns green and vitals start flowing.
 
-Unregistered IMEIs are logged and dropped on purpose.
+Unregistered IMEIs are logged and dropped on purpose — check
+`docker logs predict_app` if a car never appears.
 
 ## The app
 
@@ -93,20 +95,73 @@ Completing captures notes, **cost**, and **odometer**, and appends an immutable
 row to the maintenance log. History is filterable per car and exportable to CSV
 (`GET /api/v1/maintenance/export.csv`).
 
+### Detection presets
+
+Ten preset rules ship out of the box (seeded at startup, editable in Settings —
+threshold + on/off, no rule builder):
+
+| Key | Type | What it catches |
+|-----|------|-----------------|
+| `overheat` | threshold | Coolant critically hot (critical) |
+| `coolant_hot` | threshold | Coolant above normal for a sustained period |
+| `battery_low` | threshold | Electrical system voltage low |
+| `ecu_voltage_low` | threshold | ECU supply voltage low (FMC001) |
+| `car_battery_low` | threshold | Vehicle-reported CAN battery voltage low (FMC150) |
+| `oil_temp_high` | threshold | Engine oil above safe sustained range |
+| `service_due_soon` | threshold | Car-reported distance-to-service < 500 km |
+| `service_interval` | scheduled | Regular maintenance every 10,000 km |
+| `dtc_any` | dtc | Any diagnostic trouble code from the car |
+| `harsh_braking_day` | behavior | More than 8 hard-braking events in one day |
+
+Rule types: **threshold** (sensor vs limit), **DTC** (fault-code match),
+**scheduled** (km / engine-hours / days interval), **behavior** (daily driving
+event counts), **anomaly** (deviation from the car's own 30-day baseline).
+
+## Configuration
+
+Everything is optional — the defaults in `.env.example` work out of the box.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `predict` / `predict_dev_password` / `predict` | Database credentials (compose auto-wires `DATABASE_URL` from these) |
+| `DATABASE_URL` | local dev URL | Full SQLAlchemy URL — only set it for local dev outside compose |
+| `TELTONIKA_HOST` / `TELTONIKA_PORT` | `0.0.0.0` / `5123` | Tracker listener bind address |
+| `TELTONIKA_IDLE_TIMEOUT` | `300` | Close a silent tracker connection after N seconds |
+| `TRACKER_PUBLIC_HOST` | `<YOUR_SERVER_IP>` | Pre-fills the SMS setup templates in Settings (listener doesn't use it) |
+| `RULE_MAX_RECORD_AGE_SECONDS` | `300` | Rules only fire for records fresher than this (buffered data is stored, never alerts) |
+| `OFFLINE_AFTER_SECONDS` | `300` | A car shows offline (grey) after N seconds without data |
+| `READINGS_RETENTION_DAYS` | `365` | Raw readings retention; 1m/1h/1d aggregates are kept beyond this |
+| `COMPRESS_AFTER_DAYS` | `7` | TimescaleDB compresses chunks older than this |
+| `WATCHDOG_INTERVAL_SECONDS` | `60` | Offline-watchdog cadence |
+| `BASELINES_INTERVAL_SECONDS` | `21600` (6 h) | Baseline/anomaly job cadence |
+| `CORS_ORIGINS` | `http://localhost:5173,…` | Allowed origins for the Vite dev server |
+
 ## Develop
 
 ```bash
 # backend (db from compose)
 docker compose up -d db
 pip install -r app/requirements.txt pytest
-cd app && uvicorn server.main:app --reload     # API on :8000, trackers on :5123
+cd app
+uvicorn server.main:app --reload     # API on :8000, trackers on :5123
+```
 
-# frontend (proxies API+WS to :8000)
-cd web && npm install && npm run dev           # http://localhost:5173
+```bash
+# frontend (proxies API + WS to :8000) — separate terminal
+cd web
+npm install
+npm run dev                          # http://localhost:5173
+```
 
+```bash
 # tests & type gate
-cd app && python -m pytest tests -q
-cd web && npm run build
+cd app
+python -m pytest tests -q            # alerts, rules, codec8e, work orders, sims
+```
+
+```bash
+cd web
+npm run build                        # tsc type check + production bundle
 ```
 
 ### Fake a tracker (real Codec 8E over TCP — the production path)
@@ -115,8 +170,12 @@ cd web && npm run build
 python tools/replay.py --imei 352999001234567 --scenario drive
 python tools/replay.py --imei 352999001234567 --scenario overheat   # fires a rule
 python tools/replay.py --imei 352999001234567 --scenario burst      # old buffered data (no phantom alerts)
-python tools/smoke.py status                                        # snapshot
+python tools/smoke.py status                                        # snapshot: active alerts, suggested WOs, fleet health
+python tools/smoke.py patch-overheat 5                              # shorten the overheat sustain window (demo)
 ```
+
+Register the car first (Settings → Add car) with the same IMEI, or records are
+dropped as unknown.
 
 ### Simulate an FMC150 car (wired CAN tracker — full CAN vitals)
 
@@ -126,7 +185,7 @@ CAN odometer, engine hours, CAN battery voltage, service countdown, VIN, DTCs,
 eco-driving events).
 
 ```bash
-python tools/simulate_fmc150.py --register                  # add the car, then drive
+python tools/simulate_fmc150.py --register                  # add the car, then drive (default: commute)
 python tools/simulate_fmc150.py --scenario overheat         # fires BOTH overheating rules
 python tools/simulate_fmc150.py --scenario weak_battery     # "Car battery low"
 python tools/simulate_fmc150.py --scenario dtc              # check-engine codes
@@ -165,6 +224,22 @@ python tools/kl_drive_sim.py --stream --register        # first time
 python tools/kl_drive_sim.py --stream                   # already registered
 ```
 
+## API overview
+
+REST under `/api/v1`, WebSocket at `/ws`, liveness at `/health`. Interactive
+docs at `http://localhost:8000/docs` while developing.
+
+| Group | Endpoints |
+|-------|-----------|
+| Live | `GET /overview` · `GET /live/fleet` · `GET /live/summary` |
+| Cars | `POST/GET /cars` · `GET/PATCH/DELETE /cars/{id}` · `GET /cars/{id}/vitals` · `GET /cars/{id}/history` (auto resolution: raw ≤ 6 h, 1m ≤ 7 d, 1h ≤ 30 d, 1d all-time) · `GET /cars/{id}/timeline` · `GET /cars/{id}/driving-events` |
+| Alerts | `GET /alerts` · `POST /alerts/{id}/resolve` · `POST /alerts/{id}/dismiss` |
+| Work orders | `GET/POST /workorders` · `POST /workorders/{id}/approve` · `/start` · `/complete` · `/cancel` |
+| Maintenance | `GET /maintenance` · `GET /maintenance/export.csv` |
+| Driving | `GET /driving/summary` · `GET /driving/cars/{id}/calendar` · `/trips` · `/scores` |
+| Rules | `GET /rules` · `PATCH /rules/{id}` |
+| Settings | `GET/PATCH /settings` · `GET /settings/catalog/{model}` (what each tracker model can report) |
+
 ## Adding sensors / a new device model
 
 AVL maps live in `app/server/teltonika/avl/<model>.json` (AVL ID → normalized
@@ -175,8 +250,8 @@ pattern in `app/server/schemas.py` and the model picker in Settings.
 
 ## Architecture notes
 
-- **Ingest**: one asyncio process — TCP listener → decode → batched INSERT →
-  merged in-process live state → trips → rules → WS broadcast.
+- **Ingest**: one asyncio process — TCP listener → Codec 8E decode → AVL map →
+  batched INSERT → merged in-process live state → trips → rules → WS broadcast.
 - **Data**: `sensor_readings` hypertable, compression after 7 days, retention
   365 days. 1-minute / 1-hour / **1-day** continuous aggregates feed history
   charts (the daily aggregate is what makes the 1-year view instant).
@@ -185,30 +260,45 @@ pattern in `app/server/schemas.py` and the model picker in Settings.
   and, when advice exists, drafts a *work order*.
 - **Rule cache**: active rules are cached in-process and invalidated on any
   change; sustained-duration timers live in-process with self-expiry.
+- **Health**: green/yellow/red from active alerts, grey when offline;
+  transitions are recorded as health events for the car timeline.
 
 ## Project structure
 
 ```
 pdm-third/
-├── docker-compose.yml
-├── comple-rebuilding-of-predict.md   # the v3 spec
+├── docker-compose.yml          # db (TimescaleDB) + app (all-in-one)
+├── .env.example                # every knob, with sane defaults
 ├── app/
-│   ├── Dockerfile
+│   ├── Dockerfile              # stage 1 builds the SPA, stage 2 runs it all
+│   ├── requirements.txt        # lean: FastAPI, SQLAlchemy async, asyncpg
 │   ├── server/
-│   │   ├── main.py               # lifespan: init_db → listener → jobs
-│   │   ├── models.py             # 14 tables (alerts, work_orders, …)
-│   │   ├── ingest.py             # decode → persist → live → trips → rules
-│   │   ├── rules.py              # rule engine + presets
-│   │   ├── alerts.py             # alert create/dedup/resolve/history
-│   │   ├── workorders.py         # WO lifecycle + maintenance_log
-│   │   ├── teltonika/            # Codec 8E listener + AVL maps
-│   │   ├── api/                  # overview, cars, alerts, workorders,
-│   │   │                         # maintenance, driving, rules, settings
-│   │   └── services/             # watchdog, health, trips, baselines
-│   └── tests/
-├── tools/                        # replay / simulate_fmc150 / kl_drive_sim / smoke
-└── web/                          # React + Vite + Tailwind dashboard
+│   │   ├── main.py             # lifespan: init_db → listener → jobs; SPA host
+│   │   ├── models.py           # 13 tables (alerts, work_orders, …)
+│   │   ├── ingest.py           # decode → persist → live → trips → rules
+│   │   ├── rules.py            # rule engine + 10 presets
+│   │   ├── alerts.py           # alert create/dedup/resolve/history
+│   │   ├── workorders.py       # WO lifecycle + maintenance_log
+│   │   ├── teltonika/          # Codec 8E listener + per-model AVL maps
+│   │   ├── api/                # live, cars, alerts, workorders+maintenance,
+│   │   │                       # driving, rules, settings
+│   │   └── services/           # watchdog, health, trips, baselines
+│   └── tests/                  # pytest: alerts, rules, codec8e, WOs, sims
+├── tools/                      # replay / simulate_fmc150 / kl_drive_sim / smoke
+└── web/                        # React 18 + Vite + Tailwind dashboard
 ```
+
+## Tech stack
+
+- **Backend** — Python 3.12, FastAPI, SQLAlchemy 2 (async), asyncpg,
+  pydantic v2 / pydantic-settings, uvicorn
+- **Database** — TimescaleDB 2.17 on PostgreSQL 16 (hypertables, compression,
+  retention, continuous aggregates)
+- **Frontend** — React 18, TypeScript, Vite 6, Tailwind CSS 3, TanStack Query,
+  React Router 6, Recharts, lucide-react
+- **Device protocol** — Teltonika Codec 8 Extended over raw TCP
+- **Packaging** — two-service docker-compose; multi-stage app image
+  (`node:22-alpine` builds the SPA → `python:3.12-slim` runtime)
 
 ## Troubleshooting
 
