@@ -54,11 +54,10 @@ class PredictApi:
     def register_car(self, payload: dict) -> dict:
         existing = self.find_car_by_imei(payload["imei"])
         if existing:
-            # Re-apply physics / service anchors so re-runs stay deterministic.
             patch = {
                 k: payload[k]
                 for k in (
-                    "name", "license_plate", "make", "model", "year", "vin",
+                    "name", "device_type", "license_plate", "make", "model", "year", "vin",
                     "mass_kg", "oil_capacity_l", "brake_pad_capacity_mj",
                     "last_oil_change_odo", "last_brake_service_odo",
                 )
@@ -105,5 +104,14 @@ class PredictApi:
     def driving_events(self, vehicle_id: int) -> list:
         try:
             return self._request("GET", f"/api/v1/cars/{vehicle_id}/driving-events") or []
+        except RuntimeError:
+            try:
+                return self._request("GET", f"/api/v1/driving/cars/{vehicle_id}/events") or []
+            except RuntimeError:
+                return []
+
+    def list_rules(self) -> list:
+        try:
+            return self._request("GET", "/api/v1/rules") or []
         except RuntimeError:
             return []

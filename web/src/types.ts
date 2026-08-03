@@ -294,6 +294,7 @@ export interface Summary {
   urgent: number;
   work_orders: Record<string, number>;
   suggested: number;
+  open_todos?: number;
 }
 
 export type WsEvent =

@@ -59,28 +59,37 @@ async def fleet_live(session: AsyncSession = SessionDep):
 @router.get("/live/summary")
 async def summary(session: AsyncSession = SessionDep):
     """Header badges: cars by health, active alerts by severity, open WOs."""
-    health_rows = await session.execute(
+    health_rows = (await session.execute(
         select(Vehicle.health, func.count()).group_by(Vehicle.health)
-    )
-    alert_rows = await session.execute(
+    )).all()
+    alert_rows = (await session.execute(
         select(Alert.severity, func.count())
         .where(Alert.status == AlertStatus.ACTIVE)
         .group_by(Alert.severity)
-    )
-    wo_rows = await session.execute(
+    )).all()
+    wo_rows = (await session.execute(
         select(WorkOrder.status, func.count())
         .where(WorkOrder.status.in_([
             WorkOrderStatus.SUGGESTED, WorkOrderStatus.OPEN, WorkOrderStatus.IN_PROGRESS,
         ]))
         .group_by(WorkOrder.status)
+    )).all()
+
+    cars = {h.value: int(c) for h, c in health_rows}
+    alerts = {s.value: int(c) for s, c in alert_rows}
+    work_orders = {s.value: int(c) for s, c in wo_rows}
+    suggested = int(work_orders.get(WorkOrderStatus.SUGGESTED.value, 0))
+    open_todos = (
+        int(work_orders.get(WorkOrderStatus.OPEN.value, 0))
+        + int(work_orders.get(WorkOrderStatus.IN_PROGRESS.value, 0))
     )
     return {
-        "cars": {h.value: int(c) for h, c in health_rows.all()},
-        "cars_total": sum(int(c) for _, c in health_rows.all()),
-        "alerts": {s.value: int(c) for s, c in alert_rows.all()},
-        "alerts_total": sum(int(c) for _, c in alert_rows.all()),
-        "urgent": sum(int(c) for s, c in alert_rows.all() if s == Severity.CRITICAL),
-        "work_orders": {s.value: int(c) for s, c in wo_rows.all()},
-        "suggested": sum(int(c) for s, c in wo_rows.all()
-                        if s == WorkOrderStatus.SUGGESTED),
+        "cars": cars,
+        "cars_total": sum(cars.values()),
+        "alerts": alerts,
+        "alerts_total": sum(alerts.values()),
+        "urgent": int(alerts.get(Severity.CRITICAL.value, 0)),
+        "work_orders": work_orders,
+        "suggested": suggested,
+        "open_todos": open_todos,
     }

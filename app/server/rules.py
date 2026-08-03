@@ -493,6 +493,16 @@ PRESETS: list[dict] = [
                           "based on distance driven.",
     },
     {
+        "key": "service_interval_hours", "rule_type": RuleType.SCHEDULED,
+        "name": "Scheduled service by engine hours",
+        "description": "Regular maintenance every 500 engine hours",
+        "sensor_type": "engine_hours", "interval_value": 30000, "interval_unit": "engine_hours",
+        "severity": Severity.INFO, "priority": WorkOrderPriority.MEDIUM,
+        "auto_work_order": True,
+        "recommendation": "Time for scheduled maintenance based on engine hours "
+                          "(oil, filters, inspection).",
+    },
+    {
         "key": "dtc_any", "rule_type": RuleType.DTC,
         "name": "Fault code reported",
         "description": "Any diagnostic trouble code from the car",

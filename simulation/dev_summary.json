@@ -1,0 +1,103 @@
+{
+  "vehicle_id": 2,
+  "imei": "359633090000001",
+  "device_type": "fmc150",
+  "phases": [
+    "morning",
+    "urban",
+    "mamak",
+    "mrr2",
+    "refuel",
+    "evening",
+    "night",
+    "fuel_spike",
+    "hill",
+    "limp",
+    "dead",
+    "done"
+  ],
+  "elapsed_s": 1923.5921112999995,
+  "packets_sent": 951,
+  "reconnects": 0,
+  "alerts_total": 12,
+  "alerts_active": 10,
+  "alert_titles": [
+    "Battery failure likely soon",
+    "Battery voltage low",
+    "Brake pads wearing out",
+    "Car battery low",
+    "Coolant running hot",
+    "Engine oil very hot",
+    "Engine overheating",
+    "Fault code P0217",
+    "Frequent hard braking today",
+    "Scheduled service by engine hours",
+    "Scheduled service interval",
+    "Service due soon"
+  ],
+  "alert_keys": [],
+  "workorders": 11,
+  "workorder_titles": [
+    "Battery failure likely soon",
+    "Car battery low",
+    "Battery voltage low",
+    "Engine oil very hot",
+    "Coolant running hot",
+    "Engine overheating",
+    "Fault code reported",
+    "Scheduled service by engine hours",
+    "Scheduled service interval",
+    "Brake pads wearing out",
+    "Service due soon"
+  ],
+  "trips_count": 10,
+  "driving_events_count": 55,
+  "event_types": [
+    "harsh_accel",
+    "harsh_brake",
+    "idling",
+    "speeding"
+  ],
+  "prognostics": {
+    "vehicle_id": 2,
+    "collecting": false,
+    "battery_score": 35.0,
+    "brake_score": 69.8,
+    "oil_score": 36.8,
+    "battery_rul_days": 14,
+    "brake_remaining_km": 6,
+    "oil_remaining_km": 5284,
+    "brake_energy_mj_total": 0.7545929783950619,
+    "drivers": {
+      "oil": {
+        "top_reason": "Oil change due by distance",
+        "interval_km": 10000.0,
+        "load_penalty": 0.0,
+        "idle_ratio_7d": 0.206,
+        "km_since_change": 19956.6,
+        "thermal_minutes_7d": 0.5,
+        "cold_short_trips_7d": 0
+      },
+      "brakes": {
+        "top_reason": "High braking energy this week",
+        "energy_mj_7d": 4.94,
+        "distance_km_7d": 17.3,
+        "harsh_brake_7d": 20,
+        "energy_mj_total": 0.755,
+        "pad_capacity_mj": 2.5
+      },
+      "battery": {
+        "sensor": "vehicle_battery_voltage",
+        "trips_7d": 10,
+        "resting_v": 11.0,
+        "recovery_s": 3600.0,
+        "top_reason": "Low resting voltage",
+        "crank_drop_v": null,
+        "crank_samples": 0,
+        "short_trip_ratio_7d": 1.0
+      }
+    },
+    "updated_at": "2026-08-03T13:47:14.307692+00:00"
+  },
+  "overview_cars": 1
+}

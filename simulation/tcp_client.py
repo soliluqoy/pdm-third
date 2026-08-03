@@ -20,6 +20,7 @@ class TeltonikaClient:
         self.port = port
         self.imei = imei
         self._sock: Optional[socket.socket] = None
+        self.reconnects = 0
 
     def connect(self, timeout: float = 10.0) -> None:
         self.close()
@@ -33,6 +34,22 @@ class TeltonikaClient:
         if reply != b"\x01":
             raise RuntimeError(f"IMEI rejected by server (got {reply!r})")
         log.info("Connected to %s:%d as IMEI %s", self.host, self.port, self.imei)
+
+    def connect_with_backoff(self, *, attempts: int = 8, timeout: float = 10.0) -> None:
+        delay = 1.0
+        last: Optional[Exception] = None
+        for i in range(attempts):
+            try:
+                self.connect(timeout=timeout)
+                if i > 0:
+                    self.reconnects += 1
+                return
+            except (OSError, TimeoutError, RuntimeError) as e:
+                last = e
+                log.warning("Connect attempt %d/%d failed: %s", i + 1, attempts, e)
+                time.sleep(delay)
+                delay = min(60.0, delay * 1.7)
+        raise RuntimeError(f"Could not connect after {attempts} attempts: {last}")
 
     def close(self) -> None:
         if self._sock is not None:
@@ -49,15 +66,16 @@ class TeltonikaClient:
     def __exit__(self, *exc) -> None:
         self.close()
 
-    def send_records(self, records: List[SimRecord], retries: int = 2) -> int:
+    def send_records(self, records: List[SimRecord], retries: int = 5) -> int:
         if not records:
             return 0
         packet = build_avl_packet(records)
         last_err: Optional[Exception] = None
+        delay = 0.5
         for attempt in range(retries + 1):
             try:
                 if self._sock is None:
-                    self.connect()
+                    self.connect_with_backoff()
                 assert self._sock is not None
                 self._sock.sendall(packet)
                 ack = self._recv_exact(4)
@@ -67,9 +85,11 @@ class TeltonikaClient:
                 return count
             except (OSError, TimeoutError, RuntimeError) as e:
                 last_err = e
-                log.warning("Send failed (attempt %d): %s — reconnecting", attempt + 1, e)
+                log.warning("Send failed (attempt %d): %s - reconnecting", attempt + 1, e)
                 self.close()
-                time.sleep(0.5)
+                self.reconnects += 1
+                time.sleep(delay)
+                delay = min(30.0, delay * 1.5)
         raise RuntimeError(f"Failed to send AVL packet: {last_err}")
 
     def send_one(self, record: SimRecord) -> int:

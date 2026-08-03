@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 """
-PREDICT end-to-end simulator — standalone (this folder only).
+PREDICT KL Grind simulator — FMC150, real wall-clock 24h taxi shift.
 
-Registers one car, opens a Codec 8E TCP session, and drives a continuous
-physics-based trip that triggers threshold alerts, DTCs, behavior events,
-scheduled service, and predictive (PME) signals.
+Requires docker compose stack on :8000 + :5123. Stdlib only.
 
-Requires a running stack (docker compose up) on :8000 + :5123.
-Does not import or modify anything under app/.
-
-Usage (from this folder OR repo root):
-    python simulation/run.py
-    python simulation/run.py --quick          # shorter holds (still real durations for alerts)
-    python simulation/run.py --host 127.0.0.1 --interval 2
+    python simulation/run.py              # REAL 24h + verify
+    python simulation/run.py --smoke      # ~30s connectivity
+    python simulation/run.py --dev        # ~32 min full feature path
+    python simulation/run.py --resume     # continue from checkpoint
 """
 from __future__ import annotations
 
@@ -22,61 +17,62 @@ import logging
 import sys
 from pathlib import Path
 
-# Make local imports work whether launched as `python simulation/run.py`
-# or `python run.py` from inside simulation/.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from api import PredictApi
 from physics import VehiclePhysics
-from scenario import DEFAULT_CAR, Scenario
+from scenario import DEFAULT_CAR, Scenario, build_phases
 from tcp_client import TeltonikaClient
+from verify import report
 
 
-def _configure_logging(verbose: bool) -> None:
+def _configure_logging(verbose: bool, log_file: Path | None) -> None:
     level = logging.DEBUG if verbose else logging.INFO
+    try:
+        sys.stdout.reconfigure(errors="replace")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    stream = logging.StreamHandler(sys.stdout)
+    handlers: list[logging.Handler] = [stream]
+    if log_file is not None:
+        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)-7s %(name)s  %(message)s",
-        datefmt="%H:%M:%S",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=handlers,
+        force=True,
     )
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="PREDICT standalone end-to-end simulator")
-    p.add_argument("--api", default="http://localhost:8000", help="PREDICT HTTP base URL")
-    p.add_argument("--host", default="127.0.0.1", help="Teltonika TCP host")
-    p.add_argument("--port", type=int, default=5123, help="Teltonika TCP port")
-    p.add_argument("--interval", type=float, default=2.0, help="Sample interval seconds")
+    p = argparse.ArgumentParser(description="PREDICT KL Grind FMC150 simulator (24h wall clock)")
+    p.add_argument("--api", default="http://localhost:8000")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=5123)
+    p.add_argument("--interval", type=float, default=None, help="Sample interval seconds")
     p.add_argument(
-        "--idle-minutes",
+        "--duration-hours",
         type=float,
         default=None,
-        help="Idle hold minutes (default 5; use 1 with --quick)",
+        help="Override full-run length (default 24; ignored with --dev/--smoke)",
     )
-    p.add_argument(
-        "--quick",
-        action="store_true",
-        help="Faster scenario: 1 min idle; still respects alert duration_seconds",
-    )
-    p.add_argument(
-        "--smoke",
-        action="store_true",
-        help="~30s connectivity check only (register + short drive, no alert holds)",
-    )
+    p.add_argument("--smoke", action="store_true", help="~30s connectivity check")
+    p.add_argument("--dev", action="store_true", help="~32 min condensed feature path")
+    p.add_argument("--quick", action="store_true", help="Alias for --dev")
+    p.add_argument("--resume", action="store_true", help="Resume from checkpoint")
+    p.add_argument("--no-verify", action="store_true")
     p.add_argument("--verbose", "-v", action="store_true")
-    p.add_argument(
-        "--summary-json",
-        type=Path,
-        default=None,
-        help="Write final summary JSON to this path",
-    )
+    p.add_argument("--log-file", type=Path, default=None)
+    p.add_argument("--summary-json", type=Path, default=None)
     args = p.parse_args(argv)
-    _configure_logging(args.verbose)
-    log = logging.getLogger("sim")
 
-    idle_minutes = args.idle_minutes
-    if idle_minutes is None:
-        idle_minutes = 1.0 if args.quick else 5.0
+    mode = "smoke" if args.smoke else ("dev" if (args.dev or args.quick) else "full")
+    if args.interval is None:
+        args.interval = 2.0 if mode in ("smoke", "dev") else 5.0
+
+    _configure_logging(args.verbose, args.log_file)
+    log = logging.getLogger("sim")
 
     api = PredictApi(args.api)
     log.info("Checking PREDICT at %s …", args.api)
@@ -87,9 +83,19 @@ def main(argv: list[str] | None = None) -> int:
         log.error("Start it with: docker compose up --build")
         return 2
 
+    if mode == "dev":
+        phases, duration_hours = build_phases("dev", 0.0)
+    elif mode == "smoke":
+        phases, duration_hours = build_phases("full", 24.0)
+    else:
+        hours = 24.0 if args.duration_hours is None else args.duration_hours
+        phases, duration_hours = build_phases("full", hours)
+
     physics = VehiclePhysics(
         odometer_km=49850.0,
         distance_until_service_km=450.0,
+        fuel_pct=100.0,
+        engine_hours_min=120000.0,
         vin=DEFAULT_CAR["vin"],
     )
     client = TeltonikaClient(args.host, args.port, DEFAULT_CAR["imei"])
@@ -98,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
 
     def on_tick(msg: str, _phys: VehiclePhysics) -> None:
         tick_count["n"] += 1
-        if tick_count["n"] % 15 == 1:
+        every = 1 if mode == "smoke" else (30 if mode == "dev" else 60)
+        if tick_count["n"] % every == 1:
             log.debug("tick %s", msg)
 
     scenario = Scenario(
@@ -106,52 +113,71 @@ def main(argv: list[str] | None = None) -> int:
         client,
         physics,
         sample_interval=args.interval,
-        idle_minutes=idle_minutes,
+        duration_hours=duration_hours,
+        phases=phases,
+        resume=bool(args.resume and mode == "full"),
         on_tick=on_tick,
     )
 
-    mode = "smoke" if args.smoke else ("quick" if args.quick else "full")
     log.info(
-        "Starting %s scenario (idle=%.1f min, interval=%.1fs)",
-        mode, idle_minutes, args.interval,
+        "Starting %s scenario (duration=%.2fh, interval=%.1fs)",
+        mode, 0.0 if mode == "smoke" else duration_hours, args.interval,
     )
-    log.info("Watch the dashboard at %s — car IMEI %s", args.api, DEFAULT_CAR["imei"])
+    if mode == "full":
+        log.info("REAL wall-clock run (%.1fh) - do not let the host sleep", duration_hours)
+    log.info("Dashboard %s - IMEI %s", args.api, DEFAULT_CAR["imei"])
+
     try:
-        summary = scenario.run_smoke() if args.smoke else scenario.run()
+        if mode == "smoke":
+            summary = scenario.run_smoke()
+        else:
+            summary = scenario.run()
     except KeyboardInterrupt:
-        log.warning("Interrupted — collecting partial summary")
+        log.warning("Interrupted - collecting partial summary")
         summary = scenario.summary()
+        try:
+            scenario._save_checkpoint()
+        except Exception:
+            pass
     finally:
         client.close()
 
     log.info("")
     log.info("---------- Simulation summary ----------")
     log.info("vehicle_id     : %s", summary.get("vehicle_id"))
-    log.info("elapsed        : %.0f s", summary.get("elapsed_s", 0))
+    log.info("device_type    : %s", summary.get("device_type"))
+    log.info("elapsed        : %.1f h", (summary.get("elapsed_s") or 0) / 3600.0)
+    log.info("packets        : %s (reconnects=%s)", summary.get("packets_sent"), summary.get("reconnects"))
     log.info("alerts         : %s total / %s active", summary.get("alerts_total"), summary.get("alerts_active"))
     for title in summary.get("alert_titles") or []:
         log.info("  - %s", title)
     log.info("work orders    : %s", summary.get("workorders"))
     for title in summary.get("workorder_titles") or []:
         log.info("  - %s", title)
-    log.info("trips          : %s", summary.get("trips"))
-    log.info("driving events : %s  %s", summary.get("driving_events"), summary.get("event_types"))
+    log.info("trips          : %s", summary.get("trips_count"))
+    log.info("driving events : %s  %s", summary.get("driving_events_count"), summary.get("event_types"))
     prog = summary.get("prognostics")
     if prog:
         log.info(
             "prognostics    : battery=%s brakes=%s oil=%s",
-            prog.get("battery_score") or prog.get("battery"),
-            prog.get("brake_score") or prog.get("brakes"),
-            prog.get("oil_score") or prog.get("oil"),
+            prog.get("battery_score"),
+            prog.get("brake_score"),
+            prog.get("oil_score"),
         )
     log.info("phases         : %s", " -> ".join(summary.get("phases") or []))
     log.info("----------------------------------------")
 
     if args.summary_json:
-        args.summary_json.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
+        slim = {
+            k: v for k, v in summary.items()
+            if k not in ("alerts", "trips", "driving_events", "vitals")
+        }
+        args.summary_json.write_text(json.dumps(slim, indent=2, default=str), encoding="utf-8")
         log.info("Wrote %s", args.summary_json)
 
-    return 0
+    if args.no_verify:
+        return 0
+    return report(summary, smoke=(mode == "smoke"))
 
 
 if __name__ == "__main__":

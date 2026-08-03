@@ -106,6 +106,10 @@ export default function OverviewPage() {
     : null;
   const trips14d = (driving ?? []).reduce((sum, d) => sum + d.trips_14d, 0);
 
+  // Keep the home feed short — full list lives on /alerts.
+  const attentionAlerts = (alerts ?? []).slice(0, 4);
+  const moreAlerts = Math.max(0, (alerts?.length ?? 0) - attentionAlerts.length);
+
   return (
     <div className="space-y-6">
       {/* ── Stat cards ─────────────────────────────────────────────────── */}
@@ -123,7 +127,7 @@ export default function OverviewPage() {
 
         <StatCard icon={Wrench} title="Maintenance">
           <StatRow icon={Sparkles} tint="bg-violet-100 text-violet-600" label="Suggested" value={summary?.suggested ?? 0} />
-          <StatRow icon={ClipboardList} tint="bg-pink-100 text-pink-600" label="Open to-dos" value={openWorkOrders} />
+          <StatRow icon={ClipboardList} tint="bg-pink-100 text-pink-600" label="Open to-dos" value={summary?.open_todos ?? openWorkOrders} />
         </StatCard>
 
         <StatCard icon={Gauge} title="Driving">
@@ -132,31 +136,45 @@ export default function OverviewPage() {
         </StatCard>
       </section>
 
-      {/* ── Alerts needing action ──────────────────────────────────────── */}
-      {alerts && alerts.length > 0 && (
+      {/* Cars first (live sensors); alerts sit beside on wide screens */}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] xl:items-start">
         <section>
           <h2 className="text-sm font-semibold text-muted uppercase tracking-wide mb-3">
-            Needs attention
+            Your cars
           </h2>
-          <div className="space-y-2.5">
-            {alerts.map((a) => (
-              <AlertCard key={a.id} alert={a} />
+          <div className="grid gap-4">
+            {overview?.map((car) => (
+              <CarCard key={car.id} car={car} />
             ))}
           </div>
         </section>
-      )}
 
-      {/* ── Cars ───────────────────────────────────────────────────────── */}
-      <section>
-        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide mb-3">
-          Your cars
-        </h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          {overview?.map((car) => (
-            <CarCard key={car.id} car={car} />
-          ))}
-        </div>
-      </section>
+        {attentionAlerts.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
+                Needs attention
+              </h2>
+              <Link to="/alerts" className="text-xs font-medium text-accent hover:underline">
+                View all
+              </Link>
+            </div>
+            <div className="space-y-2.5">
+              {attentionAlerts.map((a) => (
+                <AlertCard key={a.id} alert={a} compact />
+              ))}
+            </div>
+            {moreAlerts > 0 && (
+              <Link
+                to="/alerts"
+                className="mt-3 block text-center text-xs font-medium text-muted hover:text-accent"
+              >
+                +{moreAlerts} more on Alerts
+              </Link>
+            )}
+          </section>
+        )}
+      </div>
     </div>
   );
 }

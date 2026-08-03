@@ -27,6 +27,7 @@ class CarCreate(BaseModel):
 
 class CarUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    device_type: Optional[str] = Field(default=None, pattern=r"^(fmc001|fmc150)$")
     license_plate: Optional[str] = None
     sim_phone: Optional[str] = None
     make: Optional[str] = None

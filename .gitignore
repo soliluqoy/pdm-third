@@ -20,6 +20,10 @@ web/dist/
 app/static/
 logs/
 
+# ── Simulation ────────────────────────────────────────────────────────────────
+simulation/.kl_grind_checkpoint.json
+simulation/kl_grind.log
+
 # ── IDE / OS ──────────────────────────────────────────────────────────────────
 .vscode/
 .idea/

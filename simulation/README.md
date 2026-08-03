@@ -1,73 +1,80 @@
-# PREDICT standalone end-to-end simulator
+# PREDICT KL Grind simulator (FMC150)
 
-This folder is **completely optional**. Delete it and the main app keeps working —
-nothing under `app/`, `web/`, or `tools/` imports from here.
+Optional standalone folder. Delete it and the main app keeps working.
 
-It registers **one** car, opens a real **Teltonika Codec 8E** TCP session to
-`:5123`, and drives a continuous physics-based trip that exercises:
+Simulates a **Toyota Corolla Hybrid taxi** in Kuala Lumpur with a wired
+**FMC150** CAN tracker. Default mode is a **real 24-hour wall-clock** shift
+(timestamps = wall UTC, sample every 5 s).
 
 | Area | What the scenario triggers |
 |------|----------------------------|
-| Threshold alerts | Overheat, coolant hot, oil temp high, battery low, ECU voltage low, service due soon |
-| DTC | `P0300`, `P0128` |
-| Behavior | Harsh brake (≥8/day), harsh accel/corner, speeding, high RPM, idling |
-| Scheduled | Odometer past 10 000 km service interval |
-| Predictive (PME) | Brake energy wear, weak resting/crank battery, oil distance used |
-| Work orders | Auto-drafted SUGGESTED WOs (shadow mode) for rules with `auto_work_order` |
+| Threshold | Overheat, oil very hot, battery / car battery low, service due soon |
+| DTC | `P0217` engine overtemp |
+| Behavior | Harsh brakes (≥8/day), accel/corner, speeding, high RPM, idling (mamak) |
+| Scheduled | Odometer 10 000 km + engine-hours interval |
+| Fuel | Monotonic `fuel_consumed` (L) → trip L/100 km; mid-shift Petronas **refuel** |
+| Predictive (PME) | Brake energy, weak battery / short trips, oil stress |
+| Work orders | SUGGESTED drafts (`ask_me_first=true`) |
 
 ## Prerequisites
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
 Dashboard: http://localhost:8000 · Teltonika TCP: `127.0.0.1:5123`
 
+Python **3.10+**, **stdlib only**.
+
 ## Run
 
-Python **3.10+**, **stdlib only** (no pip install).
-
 ```bash
-# from repo root
-python simulation/run.py
+# from repo root — clear prior sim history first
+python tools/clear_history.py --imei 359633090000001 --yes --reset-anchors
 
-# connectivity only (~30 s)
+# connectivity (~30 s)
 python simulation/run.py --smoke
 
-# shorter idle (1 min); alert duration holds stay real (overheat 130s, oil 310s, …)
-python simulation/run.py --quick
+# condensed feature path (~32 min) for iteration
+python simulation/run.py --dev
 
-# custom targets
-python simulation/run.py --host 127.0.0.1 --port 5123 --api http://localhost:8000
+# REAL 24-hour wall-clock shift + verify at the end
+python simulation/run.py
+python simulation/run.py --log-file simulation/kl_grind.log
+
+# resume after crash / Ctrl+C (uses simulation/.kl_grind_checkpoint.json)
+python simulation/run.py --resume
 ```
 
-Full scenario wall time is roughly **20–25 minutes** (idle 5 min + several
-multi-minute alert holds). `--quick` drops idle to 1 minute (~17–20 min).
+**Host sleep freezes the sim** — run on a machine that stays awake, or use
+`caffeinate` / Windows “prevent sleep” while `run.py` is active.
 
 ## Layout
 
 | File | Role |
 |------|------|
-| `run.py` | CLI entry |
-| `scenario.py` | Phased trip script |
-| `physics.py` | Longitudinal + thermal + battery model |
-| `codec8e.py` | Codec 8E packet encoder |
-| `tcp_client.py` | Device-side TCP (IMEI handshake → AVL → ACK) |
-| `avl_map.py` | `VehicleState` → FMC001 AVL IDs |
-| `api.py` | REST register / summary helpers |
+| `run.py` | CLI |
+| `scenario.py` | 24h / dev / smoke runner + checkpoint |
+| `schedule.py` | Phase timetable |
+| `route.py` | KL waypoints |
+| `physics.py` | CAN hybrid physics, refuel, degradation |
+| `avl_map.py` | FMC150 AVL IDs / scales |
+| `codec8e.py` | Codec 8E encoder |
+| `tcp_client.py` | Device TCP + reconnect backoff |
+| `api.py` | REST helpers |
+| `verify.py` | Post-run checklist |
 
 ## Sim car
 
-IMEI `359633090000001` — reused if already registered. Safe to clear afterward:
+IMEI `359633090000001`, `device_type: fmc150`. Starts with a **full tank**.
 
 ```bash
-python tools/clear_history.py --imei 359633090000001 --yes
+python tools/clear_history.py --imei 359633090000001 --yes --reset-anchors
 ```
 
 ## Notes
 
-- Timestamps are **wall clock** so rule freshness (`RULE_MAX_RECORD_AGE_SECONDS`) accepts them.
-- Alert phases hold conditions for at least each rule’s `duration_seconds`.
-- PME scores update on trip close and on the hourly predictor job; the short-trip
-  + weak-rest phases bias battery/brake/oil into alert range. If scores look
-  unchanged immediately, wait for the next predictor pass or close another trip.
+- Timestamps are **wall clock** so rule freshness accepts every packet.
+- Alert phases hold conditions for each rule’s `duration_seconds` in real time.
+- `--dev` is for coding loops only — acceptance is a successful **full 24h** verify.
+- Checkpoint every 10 minutes during the full run; deleted on clean completion.
