@@ -1,16 +1,15 @@
 // PREDICT — app shell: console-style collapsible sidebar + slim header
 // (mobile keeps a top bar + bottom tabs)
 import {
-  Activity, Bell, CarFront, Gauge, LogOut, PanelLeftClose, PanelLeft,
+  Activity, Bell, CarFront, Gauge, PanelLeftClose, PanelLeft,
   Settings as SettingsIcon, Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import { api, qk } from "../api";
-import { useAuth } from "../auth";
 import { useWs } from "../ws";
 
 type NavEntry = {
@@ -51,10 +50,7 @@ function BrandMark({ size = 36 }: { size?: number }) {
 
 export default function Layout() {
   const { connected } = useWs();
-  const { authenticated, logout } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
-  const [loggingOut, setLoggingOut] = useState(false);
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("pdm.nav-collapsed") === "1",
   );
@@ -210,22 +206,6 @@ export default function Layout() {
                 />
                 {connected ? "Live" : "Reconnecting…"}
               </div>
-              {authenticated && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setLoggingOut(true);
-                    await logout();
-                    navigate("/login", { replace: true });
-                  }}
-                  disabled={loggingOut}
-                  className="btn-ghost !py-1.5 !px-2.5 text-xs"
-                  title="Sign out"
-                >
-                  <LogOut size={15} />
-                  <span className="hidden sm:inline">Sign out</span>
-                </button>
-              )}
             </div>
           </div>
         </header>

@@ -10,7 +10,6 @@ const BASE = "/api/v1";
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
-    credentials: "include", // send the session cookie
     ...init,
   });
   if (!res.ok) {
@@ -51,11 +50,6 @@ export const qk = {
 };
 
 export const api = {
-  // auth (optional single-admin login)
-  login: (password: string) => post<{ authenticated: boolean }>("/auth/login", { password }),
-  logout: () => post<{ authenticated: boolean }>("/auth/logout"),
-  me: () => request<{ authenticated: boolean }>("/auth/me"),
-
   // overview / header
   overview: () => request<OverviewCar[]>("/overview"),
   summary: () => request<Summary>("/live/summary"),

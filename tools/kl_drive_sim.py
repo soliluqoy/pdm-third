@@ -225,6 +225,19 @@ def register_car(api: str, imei: str, name: str) -> None:
         raise SystemExit(1)
 
 
+def check_registered(api: str, imei: str) -> bool | None:
+    """Is this IMEI already registered with the server? None = can't tell
+    (API unreachable). Lets --stream warn before the server silently drops
+    every record (it accepts any IMEI handshake, then discards unknown cars)."""
+    req = urllib.request.Request(api.rstrip("/") + "/api/v1/cars", method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            cars = json.load(resp)
+        return any(c.get("imei") == imei for c in cars)
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
 # ── The Kuala Lumpur route ────────────────────────────────────────────────────
 @dataclass(frozen=True)
 class Stop:
@@ -1032,6 +1045,18 @@ def main() -> int:
     if args.stream:
         if args.register:
             register_car(args.api, args.imei, args.name)
+        else:
+            known = check_registered(args.api, args.imei)
+            if known is False:
+                print(f"  !! IMEI {args.imei} is NOT registered with the server —",
+                      file=sys.stderr)
+                print("     it will accept the connection but DROP every record.",
+                      file=sys.stderr)
+                print("     Fix: re-run with --register, or add the car in the "
+                      "dashboard (Settings → Add car) first.", file=sys.stderr)
+            elif known is None:
+                print(f"  note: can't verify registration — API unreachable at "
+                      f"{args.api} (is the app up?)", file=sys.stderr)
         try:
             sock = socket.create_connection((args.host, args.port), timeout=15)
             imei_b = args.imei.encode("ascii")
