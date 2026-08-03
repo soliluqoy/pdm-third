@@ -1,0 +1,14 @@
+# Keep the Docker build context small and avoid leaking host artifacts
+# into the image (host node_modules would shadow the Linux ones the
+# Dockerfile installs, breaking the frontend build).
+
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+
+.git
+.env
+*.md
+tools/

@@ -1,0 +1,56 @@
+# =============================================================================
+# PREDICT — car health & driving insights for FMC001 / FMC150 trackers
+# Two services: db (TimescaleDB) + app (FastAPI + Teltonika listener + SPA)
+#
+# Device path:  FMC001/FMC150 → 4G LTE → <HOST>:5123 → app → db → dashboard
+# =============================================================================
+
+services:
+  # ── TimescaleDB (PostgreSQL 16) ─────────────────────────────────────────────
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: predict_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-predict}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-predict_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-predict}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-predict} -d ${POSTGRES_DB:-predict}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - predict_net
+
+  # ── App (FastAPI + Teltonika listener :5123 + dashboard :8000) ─────────────
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: predict_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-predict}:${POSTGRES_PASSWORD:-predict_dev_password}@db:5432/${POSTGRES_DB:-predict}
+    ports:
+      - "8000:8000"     # dashboard + REST API + WebSocket
+      - "5123:5123"     # Teltonika AVL TCP (point trackers here)
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - predict_net
+
+networks:
+  predict_net:
+    driver: bridge
+
+volumes:
+  pgdata:

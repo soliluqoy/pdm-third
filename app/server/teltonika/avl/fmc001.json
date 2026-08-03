@@ -1,0 +1,45 @@
+{
+  "_readme": [
+    "Maps Teltonika FMC001 (OBD-II plug-in) AVL I/O element IDs → PREDICT sensor types.",
+    "Per-model file: the bridge picks avl_map.<model>.json by the IMEI→model mapping in BRIDGE_DEVICES (see fmc_bridge.py). Sibling file: avl_map.fmc150.json.",
+    "The bridge publishes value = raw * scale + offset.",
+    "kind 'sensor' → payload.sensors[sensor_type]; kind 'meta' → top-level payload field (e.g. ignition, vin); kind 'dtc' → published to teltonika/{imei}/dtc; kind 'event' → published to teltonika/{imei}/event (eco-driving).",
+    "encoding 'ascii' → variable-length (8E X-group) bytes are decoded as ASCII instead of hex (needed for AVL 256 VIN and AVL 281 fault codes).",
+    "AVL IDs follow the Teltonika wiki page 'FMC001 Teltonika Data Sending Parameters ID' — IDs 30-60 are the standard OBD-II PID group, 256/281/402 require Data Protocol = Codec 8 Extended on the device.",
+    "sensor_type strings MUST stay in sync with backend/app/services/provisioning.py (FMC001_SENSOR_CATALOG) and backend/app/db/init_db.py (SEED_RULES).",
+    "Not every car answers every OBD PID. Discovery tool: the bridge logs every UNMAPPED AVL ID it receives (check `docker compose logs -f bridge`) so you can see exactly what your car sends and adjust here — NO code changes needed."
+  ],
+  "io_elements": [
+    { "id": 239, "sensor_type": "ignition",      "name": "Ignition",                "unit": "",   "kind": "meta",   "scale": 1,     "offset": 0, "_comment": "0/1 — top-level 'ignition' flag, drives GREY→GREEN" },
+    { "id": 240, "sensor_type": "movement",      "name": "Movement",                "unit": "",   "kind": "meta",   "scale": 1,     "offset": 0, "_comment": "0/1 — top-level 'movement' flag" },
+    { "id": 21,  "sensor_type": "gsm_signal",    "name": "GSM Signal",              "unit": "1-5", "kind": "sensor", "scale": 1,     "offset": 0, "_comment": "Teltonika standard" },
+    { "id": 66,  "sensor_type": "battery_voltage", "name": "Battery Voltage",       "unit": "V",  "kind": "sensor", "scale": 0.001, "offset": 0, "_comment": "External (vehicle) voltage, sent in mV → V" },
+    { "id": 67,  "sensor_type": "tracker_battery_voltage", "name": "Tracker Battery Voltage", "unit": "V", "kind": "sensor", "scale": 0.001, "offset": 0, "_comment": "FMC001 internal battery, mV → V" },
+    { "id": 24,  "sensor_type": "vehicle_speed", "name": "Vehicle Speed",           "unit": "km/h", "kind": "sensor", "scale": 1,   "offset": 0, "_comment": "Teltonika standard (GNSS-based speed also in gps block)" },
+    { "id": 16,  "sensor_type": "odometer",      "name": "Odometer",                "unit": "km", "kind": "sensor", "scale": 0.001, "offset": 0, "_comment": "Total odometer, sent in m → km" },
+
+    { "id": 256, "sensor_type": "vin",           "name": "VIN",                     "unit": "",   "kind": "meta",   "encoding": "ascii", "_comment": "17-char ASCII VIN via 8E X-group — top-level payload field, not a dashboard sensor" },
+    { "id": 30,  "sensor_type": "dtc_count",     "name": "DTC Count",               "unit": "",   "kind": "sensor", "scale": 1,     "offset": 0, "_comment": "Number of active diagnostic trouble codes" },
+    { "id": 31,  "sensor_type": "engine_load",   "name": "Engine Load",             "unit": "%",  "kind": "sensor", "scale": 1,     "offset": 0, "_comment": "Calculated engine load" },
+    { "id": 32,  "sensor_type": "coolant_temperature", "name": "Coolant Temperature", "unit": "°C", "kind": "sensor", "scale": 1,   "offset": 0 },
+    { "id": 35,  "sensor_type": "intake_map",    "name": "Intake Manifold Pressure", "unit": "kPa", "kind": "sensor", "scale": 1,   "offset": 0 },
+    { "id": 36,  "sensor_type": "engine_rpm",    "name": "Engine RPM",              "unit": "RPM", "kind": "sensor", "scale": 1,    "offset": 0 },
+    { "id": 37,  "sensor_type": "vehicle_speed_obd", "name": "Vehicle Speed (OBD)", "unit": "km/h", "kind": "sensor", "scale": 1,   "offset": 0, "_comment": "ECU-reported speed; complements GNSS speed (AVL 24)" },
+    { "id": 39,  "sensor_type": "intake_air_temperature", "name": "Intake Air Temperature", "unit": "°C", "kind": "sensor", "scale": 1, "offset": 0 },
+    { "id": 41,  "sensor_type": "throttle_position", "name": "Throttle Position",   "unit": "%",  "kind": "sensor", "scale": 1,     "offset": 0 },
+    { "id": 42,  "sensor_type": "engine_runtime", "name": "Runtime Since Engine Start", "unit": "s", "kind": "sensor", "scale": 1,  "offset": 0 },
+    { "id": 43,  "sensor_type": "mil_on_distance", "name": "Distance Traveled MIL On", "unit": "km", "kind": "sensor", "scale": 1,  "offset": 0, "_comment": "Distance driven with the check-engine light on" },
+    { "id": 48,  "sensor_type": "fuel_level",    "name": "Fuel Level",              "unit": "%",  "kind": "sensor", "scale": 1,     "offset": 0, "_comment": "OBD fuel level — FMC001 id, differs from FMC150 CAN (81)" },
+    { "id": 49,  "sensor_type": "codes_cleared_distance", "name": "Distance Since Codes Cleared", "unit": "km", "kind": "sensor", "scale": 1, "offset": 0 },
+    { "id": 51,  "sensor_type": "control_module_voltage", "name": "Control Module Voltage", "unit": "V", "kind": "sensor", "scale": 0.001, "offset": 0, "_comment": "ECU supply voltage, multiplier 0.001 — charging-system health" },
+    { "id": 53,  "sensor_type": "ambient_air_temperature", "name": "Ambient Air Temperature", "unit": "°C", "kind": "sensor", "scale": 1, "offset": 0 },
+    { "id": 58,  "sensor_type": "engine_oil_temperature", "name": "Engine Oil Temperature", "unit": "°C", "kind": "sensor", "scale": 1, "offset": 0 },
+    { "id": 60,  "sensor_type": "fuel_rate",     "name": "Fuel Rate",               "unit": "L/h", "kind": "sensor", "scale": 0.01, "offset": 0 },
+    { "id": 281, "sensor_type": "dtc",           "name": "Fault Codes",             "unit": "",   "kind": "dtc",    "encoding": "ascii", "_comment": "Comma-separated ASCII codes via 8E X-group — bridge splits and publishes each to teltonika/{imei}/dtc" },
+    { "id": 402, "sensor_type": "distance_until_service", "name": "Distance Until Service", "unit": "km", "kind": "sensor", "scale": 1, "offset": 0, "_comment": "OEM PID (FMC001 supported) — countdown to next scheduled service; not every car answers it" },
+
+    { "id": 253, "sensor_type": "green_driving_type",  "name": "Green Driving Type",  "unit": "",  "kind": "event", "scale": 1, "offset": 0, "_comment": "1=harsh accel, 2=harsh brake, 3=harsh corner — enable Eco driving in Configurator" },
+    { "id": 254, "sensor_type": "green_driving_value", "name": "Green Driving Value", "unit": "",  "kind": "event", "scale": 1, "offset": 0, "_comment": "Magnitude paired with AVL 253" },
+    { "id": 255, "sensor_type": "overspeeding",        "name": "Overspeeding",        "unit": "km/h", "kind": "event", "scale": 1, "offset": 0, "_comment": "Device overspeeding event — enable Overspeeding in Configurator" }
+  ]
+}

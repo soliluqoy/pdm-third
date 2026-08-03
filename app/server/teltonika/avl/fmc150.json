@@ -1,0 +1,46 @@
+{
+  "_readme": [
+    "Maps Teltonika FMC150 (wired CAN tracker) AVL I/O element IDs → PREDICT sensor types.",
+    "Per-model file: the bridge picks avl_map.<model>.json by the IMEI→model mapping in BRIDGE_DEVICES (see fmc_bridge.py). Sibling file: avl_map.fmc001.json.",
+    "The bridge publishes value = raw * scale + offset.",
+    "kind 'sensor' → payload.sensors[sensor_type]; kind 'meta' → top-level payload field (e.g. ignition, vin); kind 'dtc' → published to teltonika/{imei}/dtc; kind 'event' → published to teltonika/{imei}/event (eco-driving).",
+    "encoding 'ascii' → variable-length (8E X-group) bytes are decoded as ASCII instead of hex (needed for AVL 325 VIN and AVL 282 fault codes).",
+    "AVL IDs follow the Teltonika wiki page 'FMC150 Teltonika Data Sending Parameters ID' (CAN I/O standard + extended elements). CAN parameters only arrive if the vehicle is on Teltonika's compatibility list and the correct CAN program number is selected in the Configurator.",
+    "sensor_type strings match the FMC001 map wherever the physical quantity is the same (engine_rpm, coolant_temperature, fuel_level, ...) so rules and the dashboard stay device-agnostic. MUST stay in sync with backend/app/services/provisioning.py (FMC150_SENSOR_CATALOG) and backend/app/db/init_db.py (SEED_RULES).",
+    "ID 16 (GNSS Total Odometer) is deliberately NOT mapped here: ID 87 is the true CAN mileage and both would write the same sensor_type in one record.",
+    "Discovery tool: the bridge logs every UNMAPPED AVL ID it receives (check `docker compose logs -f bridge`) so you can see exactly what your car sends and adjust here — NO code changes needed."
+  ],
+  "io_elements": [
+    { "id": 239, "sensor_type": "ignition",      "name": "Ignition",                "unit": "",   "kind": "meta",   "scale": 1,     "offset": 0, "_comment": "0/1 — top-level 'ignition' flag, drives GREY→GREEN" },
+    { "id": 240, "sensor_type": "movement",      "name": "Movement",                "unit": "",   "kind": "meta",   "scale": 1,     "offset": 0, "_comment": "0/1 — top-level 'movement' flag" },
+    { "id": 21,  "sensor_type": "gsm_signal",    "name": "GSM Signal",              "unit": "1-5", "kind": "sensor", "scale": 1,     "offset": 0, "_comment": "Teltonika standard" },
+    { "id": 66,  "sensor_type": "battery_voltage", "name": "Battery Voltage",       "unit": "V",  "kind": "sensor", "scale": 0.001, "offset": 0, "_comment": "External (vehicle) voltage from the wired power connection, sent in mV → V" },
+    { "id": 67,  "sensor_type": "tracker_battery_voltage", "name": "Tracker Battery Voltage", "unit": "V", "kind": "sensor", "scale": 0.001, "offset": 0, "_comment": "FMC150 internal backup battery, mV → V" },
+    { "id": 24,  "sensor_type": "vehicle_speed", "name": "Vehicle Speed",           "unit": "km/h", "kind": "sensor", "scale": 1,   "offset": 0, "_comment": "Teltonika standard (GNSS-based speed also in gps block)" },
+
+    { "id": 85,  "sensor_type": "engine_rpm",    "name": "Engine RPM",              "unit": "RPM", "kind": "sensor", "scale": 1,    "offset": 0, "_comment": "CAN standard — 'Engine Speed'" },
+    { "id": 115, "sensor_type": "coolant_temperature", "name": "Coolant Temperature", "unit": "°C", "kind": "sensor", "scale": 0.1, "offset": 0, "_comment": "CAN standard — signed, multiplier 0.1 (raw 910 = 91.0 °C)" },
+    { "id": 81,  "sensor_type": "vehicle_speed_obd", "name": "Vehicle Speed (CAN)", "unit": "km/h", "kind": "sensor", "scale": 1,   "offset": 0, "_comment": "CAN standard — wheel-speed/ECU speed; same sensor_type as FMC001's OBD speed (37) so rules match both" },
+    { "id": 82,  "sensor_type": "throttle_position", "name": "Throttle Position",   "unit": "%",  "kind": "sensor", "scale": 1,     "offset": 0, "_comment": "CAN standard" },
+    { "id": 89,  "sensor_type": "fuel_level",    "name": "Fuel Level",              "unit": "%",  "kind": "sensor", "scale": 1,     "offset": 0, "_comment": "CAN standard — percent. NOTE: AVL 81 is vehicle speed, not fuel" },
+    { "id": 84,  "sensor_type": "fuel_level_liters", "name": "Fuel Level (liters)", "unit": "l",  "kind": "sensor", "scale": 0.1,   "offset": 0, "_comment": "CAN standard — absolute fuel amount" },
+    { "id": 83,  "sensor_type": "fuel_consumed", "name": "Fuel Consumed (total)",   "unit": "l",  "kind": "sensor", "scale": 0.1,   "offset": 0, "_comment": "CAN standard — cumulative since first engine operation" },
+    { "id": 87,  "sensor_type": "odometer",      "name": "Odometer",                "unit": "km", "kind": "sensor", "scale": 0.001, "offset": 0, "_comment": "CAN standard 'Total Mileage', sent in m → km. Preferred over GNSS odometer (16, unmapped on purpose)" },
+    { "id": 102, "sensor_type": "engine_hours",  "name": "Engine Total Hours",      "unit": "min", "kind": "sensor", "scale": 1,   "offset": 0, "_comment": "CAN standard — engine work time in minutes" },
+    { "id": 168, "sensor_type": "vehicle_battery_voltage", "name": "Vehicle Battery Voltage (CAN)", "unit": "V", "kind": "sensor", "scale": 1, "offset": 0, "_comment": "CAN standard — battery voltage as reported by the vehicle itself (66 is the tracker's own supply reading)" },
+    { "id": 152, "sensor_type": "hv_battery_charge", "name": "HV Battery Charge Level", "unit": "%", "kind": "sensor", "scale": 1,  "offset": 0, "_comment": "CAN standard — EV/hybrid high-voltage battery charge" },
+    { "id": 1396, "sensor_type": "ambient_air_temperature", "name": "Ambient Air Temperature", "unit": "°C", "kind": "sensor", "scale": 1, "offset": 0, "_comment": "CAN extended — signed" },
+    { "id": 1270, "sensor_type": "engine_oil_temperature", "name": "Engine Oil Temperature", "unit": "°C", "kind": "sensor", "scale": 1, "offset": 0, "_comment": "CAN extended — signed" },
+    { "id": 1158, "sensor_type": "engine_oil_pressure", "name": "Engine Oil Pressure", "unit": "kPa", "kind": "sensor", "scale": 1, "offset": 0, "_comment": "CAN extended" },
+    { "id": 1159, "sensor_type": "engine_oil_level", "name": "Engine Oil Level",    "unit": "%",  "kind": "sensor", "scale": 1,     "offset": 0, "_comment": "CAN extended" },
+    { "id": 325, "sensor_type": "vin",           "name": "VIN",                     "unit": "",   "kind": "meta",   "encoding": "ascii", "_comment": "17-char ASCII VIN via 8E X-group — top-level payload field, not a dashboard sensor" },
+    { "id": 160, "sensor_type": "dtc_count",     "name": "DTC Count",               "unit": "",   "kind": "sensor", "scale": 1,     "offset": 0, "_comment": "Number of active diagnostic trouble codes (CAN adapter group)" },
+    { "id": 282, "sensor_type": "dtc",           "name": "Fault Codes",             "unit": "",   "kind": "dtc",    "encoding": "ascii", "_comment": "Comma-separated ASCII codes via 8E X-group (LV-CAN200+DTC / CANCONTROL) — bridge splits and publishes each to teltonika/{imei}/dtc" },
+    { "id": 400, "sensor_type": "distance_until_service", "name": "Distance Until Service", "unit": "km", "kind": "sensor", "scale": 1, "offset": 0, "_comment": "CAN standard 'Distance till next servicing' — countdown to next scheduled service; only if the car exposes it" },
+    { "id": 866, "sensor_type": "remaining_distance", "name": "Remaining Distance", "unit": "km", "kind": "sensor", "scale": 1,    "offset": 0, "_comment": "CAN standard — range with current tank/battery" },
+
+    { "id": 253, "sensor_type": "green_driving_type",  "name": "Green Driving Type",  "unit": "",  "kind": "event", "scale": 1, "offset": 0, "_comment": "1=harsh accel, 2=harsh brake, 3=harsh corner — enable Eco driving in Configurator" },
+    { "id": 254, "sensor_type": "green_driving_value", "name": "Green Driving Value", "unit": "",  "kind": "event", "scale": 1, "offset": 0, "_comment": "Magnitude paired with AVL 253" },
+    { "id": 255, "sensor_type": "overspeeding",        "name": "Overspeeding",        "unit": "km/h", "kind": "event", "scale": 1, "offset": 0, "_comment": "Device overspeeding event — enable Overspeeding in Configurator" }
+  ]
+}
