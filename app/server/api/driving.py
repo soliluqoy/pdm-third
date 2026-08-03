@@ -50,17 +50,29 @@ async def driving_summary(session: AsyncSession = SessionDep):
     for vid, et, c in event_rows.all():
         events_by_vehicle.setdefault(vid, {})[et.value] = int(c)
 
+    # Open trips aren't in DriverScore yet — still count them so the page
+    # doesn't look empty while a drive is underway.
+    open_rows = await session.execute(
+        select(Trip.vehicle_id, func.count())
+        .where(Trip.is_open == True)  # noqa: E712
+        .group_by(Trip.vehicle_id)
+    )
+    open_by_vehicle = {vid: int(c) for vid, c in open_rows.all()}
+
     out = []
     for v in vehicles:
         scores = sorted(by_vehicle.get(v.id, []), key=lambda s: s.date)
         today_score = next((s for s in scores if s.date == today), None)
         recent = scores[-7:]
+        closed_trips = sum(s.trips for s in scores)
+        open_trips = open_by_vehicle.get(v.id, 0)
         out.append({
             "vehicle_id": v.id, "name": v.name,
             "today_score": today_score.score if today_score else None,
             "avg_score_7d": round(sum(s.score for s in recent) / len(recent), 1) if recent else None,
             "distance_14d_km": round(sum(s.distance_km for s in scores), 1),
-            "trips_14d": sum(s.trips for s in scores),
+            "trips_14d": closed_trips + open_trips,
+            "open_trips": open_trips,
             "trend": [
                 {"date": s.date.isoformat(), "score": s.score,
                  "distance_km": s.distance_km, "trips": s.trips}

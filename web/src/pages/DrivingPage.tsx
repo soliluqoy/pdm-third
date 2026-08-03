@@ -74,10 +74,10 @@ function fmtDayLabel(iso: string): string {
 
 export default function DrivingPage() {
   const now = new Date();
-  const { data: summary } = useQuery({
+  const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: qk.driving,
     queryFn: api.drivingSummary,
-    refetchInterval: 60_000,
+    refetchInterval: 15_000,
   });
   const [selected, setSelected] = useState<number | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -93,18 +93,21 @@ export default function DrivingPage() {
     queryKey: qk.drivingCalendar(active!, monthCursor.year, monthCursor.month),
     queryFn: () => api.drivingCalendar(active!, monthCursor.year, monthCursor.month),
     enabled: active !== null,
+    refetchInterval: 15_000,
   });
 
   const { data: trips } = useQuery({
     queryKey: qk.trips(active!, day),
     queryFn: () => api.trips(active!, day),
     enabled: active !== null,
+    refetchInterval: 10_000,
   });
 
   const { data: events } = useQuery({
     queryKey: qk.drivingEvents(active!, day),
     queryFn: () => api.drivingEvents(active!, day),
     enabled: active !== null,
+    refetchInterval: 10_000,
   });
 
   const groups = useMemo(
@@ -116,6 +119,12 @@ export default function DrivingPage() {
     if (!day || !calendar) return null;
     return calendar.days.find((d) => d.date === day) ?? null;
   }, [calendar, day]);
+
+  if (summaryLoading && !summary) {
+    return (
+      <div className="card p-8 text-sm text-muted">Loading driving data…</div>
+    );
+  }
 
   if (summary && summary.length === 0) {
     return (
@@ -467,6 +476,9 @@ function ScoreCard({
           <div className="font-semibold text-slate-900">{s.name}</div>
           <div className="text-xs text-muted mt-0.5">
             {s.trips_14d} trips · {fmtValue(s.distance_14d_km, 0)} km (14 days)
+            {(s.open_trips ?? 0) > 0 && (
+              <span className="chip bg-ok/10 text-ok ml-2">Underway</span>
+            )}
           </div>
           <div className="flex flex-wrap gap-1.5 mt-2">
             {Object.entries(s.events_14d).map(([type, count]) => (

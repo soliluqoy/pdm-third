@@ -244,3 +244,7 @@ pdm-third/
 | Wrong/missing RPM, fuel | Wrong model at registration, or car doesn't expose that PID/CAN param — check unmapped-AVL logs |
 | FMC001 primary platform stalls | Duplicate mode requires BOTH servers to ACK — fix the endpoint or disable Duplicate |
 | Alert keeps re-firing | It won't spam — one alert, occurrence count increments. It auto-resolves when the condition clears |
+
+delete simulation log :
+
+docker compose run --rm -v ${PWD}/tools:/tools app python /tools/clear_history.py --yes

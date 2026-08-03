@@ -194,7 +194,7 @@ async def process_reading(
         await _close_trip(session, trip, ts, odometer, fuel, state)
         trip = None
 
-    # ── In-trip aggregates + derived events ───────────────────────────────────
+    # In-trip aggregates + derived events
     if trip is not None:
         if speed is not None:
             state["speed_sum"] = state.get("speed_sum", 0.0) + speed
@@ -202,6 +202,14 @@ async def process_reading(
             if speed > state.get("max_speed", 0.0):
                 state["max_speed"] = speed
                 trip.max_speed = speed
+
+        # Live distance / duration so Driving page isn't blank mid-trip
+        if trip.start_odometer is not None and odometer is not None and odometer >= trip.start_odometer:
+            trip.distance_km = round(odometer - trip.start_odometer, 3)
+        trip.duration_seconds = max(0, int((ts - trip.start_ts).total_seconds()))
+        n = state.get("speed_n", 0)
+        if n > 0:
+            trip.avg_speed = round(state.get("speed_sum", 0.0) / n, 2)
 
         # Harsh accel / brake: Δspeed/Δt between samples
         if (speed is not None and prev_speed is not None and prev_ts is not None

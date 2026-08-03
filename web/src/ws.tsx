@@ -76,9 +76,16 @@ export function WsProvider({ children }: { children: ReactNode }) {
             queryClient.invalidateQueries({ queryKey: qk.overview });
             break;
           case "health":
+            queryClient.invalidateQueries({ queryKey: qk.overview });
+            break;
           case "trip":
           case "driving_event":
+            // Keep Driving page lists fresh — summary alone is not enough.
             queryClient.invalidateQueries({ queryKey: qk.driving });
+            queryClient.invalidateQueries({ queryKey: ["trips"] });
+            queryClient.invalidateQueries({ queryKey: ["driving-events"] });
+            queryClient.invalidateQueries({ queryKey: ["driving-calendar"] });
+            queryClient.invalidateQueries({ queryKey: qk.overview });
             break;
           case "settings":
             queryClient.invalidateQueries({ queryKey: qk.settings });

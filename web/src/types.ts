@@ -213,6 +213,7 @@ export interface DrivingSummary {
   avg_score_7d: number | null;
   distance_14d_km: number;
   trips_14d: number;
+  open_trips?: number;
   trend: { date: string; score: number; distance_km: number; trips: number }[];
   events_14d: Record<string, number>;
 }
