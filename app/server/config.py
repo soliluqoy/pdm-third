@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     READINGS_RETENTION_DAYS: int = 365
     # Baselines / anomaly job cadence
     BASELINES_INTERVAL_SECONDS: int = 6 * 3600
+    # Predictive maintenance engine (battery / brakes / oil) cadence
+    PREDICTOR_INTERVAL_SECONDS: int = 3600
 
     @property
     def cors_origins_list(self) -> List[str]:

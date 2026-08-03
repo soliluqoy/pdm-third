@@ -125,11 +125,25 @@ def _split_sql(script: str) -> list[str]:
     return [s.strip() for s in statements if s.strip()]
 
 
+# Idempotent column adds for existing deployments (create_all won't ALTER).
+_VEHICLE_COLUMN_MIGRATIONS = """
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS mass_kg DOUBLE PRECISION;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS oil_capacity_l DOUBLE PRECISION;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS brake_pad_capacity_mj DOUBLE PRECISION;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_oil_change_at TIMESTAMPTZ;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_oil_change_odo DOUBLE PRECISION;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_brake_service_at TIMESTAMPTZ;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_brake_service_odo DOUBLE PRECISION;
+"""
+
+
 async def init_db() -> None:
     logger.info("Initializing database schema…")
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
         await conn.run_sync(Base.metadata.create_all)
+        for statement in _split_sql(_VEHICLE_COLUMN_MIGRATIONS):
+            await conn.execute(text(statement))
         script = _TIMESCALE_SQL.format(
             compress_days=settings.COMPRESS_AFTER_DAYS,
             retention_days=settings.READINGS_RETENTION_DAYS,

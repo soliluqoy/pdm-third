@@ -4,6 +4,7 @@ PREDICT v3 — data model.
 Flow:  SensorReading → Rule → Alert → WorkOrder → MaintenanceLog
        Telemetry → Trip → DrivingEvent → DriverScore
        Nightly → SensorBaseline (+ anomaly Alerts)
+       Trip-end / hourly → ComponentHealth (battery / brakes / oil PME)
        Setting = key/value config (ask_me_first, behavior thresholds, …)
 
 v3 vs v2: "Issue" is now "Alert" (with dedup_key + occurrence_count),
@@ -116,6 +117,15 @@ class Vehicle(Base):
     imei = Column(String(20), unique=True, nullable=False, index=True)
     device_type = Column(String(20), nullable=False, default="fmc001")  # fmc001 | fmc150
     sim_phone = Column(String(32))
+
+    # Physics / service anchors for the predictive maintenance engine
+    mass_kg = Column(Float)                         # brake kinetic energy; default 1500 if null
+    oil_capacity_l = Column(Float)                  # optional; default 5.0
+    brake_pad_capacity_mj = Column(Float)           # energy budget; settings default if null
+    last_oil_change_at = Column(DateTime(timezone=True))
+    last_oil_change_odo = Column(Float)
+    last_brake_service_at = Column(DateTime(timezone=True))
+    last_brake_service_odo = Column(Float)
 
     health = Column(SAEnum(Health), nullable=False, default=Health.GREY, index=True)
     last_seen = Column(DateTime(timezone=True))
@@ -378,6 +388,42 @@ class SensorBaseline(Base):
     __table_args__ = (
         UniqueConstraint("vehicle_id", "sensor_type", "window",
                          name="uq_baselines_vehicle_sensor_window"),
+    )
+
+
+class ComponentHealth(Base):
+    """Latest predictive scores / RUL per vehicle (upserted by predictor)."""
+    __tablename__ = "component_health"
+
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"),
+                        primary_key=True)
+    battery_score = Column(Float)
+    brake_score = Column(Float)
+    oil_score = Column(Float)
+    battery_rul_days = Column(Integer)
+    brake_remaining_km = Column(Integer)
+    oil_remaining_km = Column(Integer)
+    brake_energy_mj_total = Column(Float, nullable=False, default=0.0)
+    drivers = Column(JSONB, default=dict)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class ComponentWearEvent(Base):
+    """Append-only ledger of wear / score / reset events for prognostics."""
+    __tablename__ = "component_wear_events"
+
+    id = Column(Integer, primary_key=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    component = Column(String(20), nullable=False)   # battery | brakes | oil
+    trip_id = Column(Integer, ForeignKey("trips.id", ondelete="SET NULL"), nullable=True)
+    event_kind = Column(String(20), nullable=False)  # wear | reset | score
+    delta_score = Column(Float)
+    metric = Column(JSONB, default=dict)
+    ts = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    __table_args__ = (
+        Index("ix_wear_vehicle_component_ts", "vehicle_id", "component", "ts"),
     )
 
 

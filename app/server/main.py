@@ -4,7 +4,7 @@ PREDICT — application entrypoint.
 One process runs everything:
   FastAPI (REST /api/v1 + WebSocket /ws + built SPA)
   Teltonika TCP listener (:5123)
-  background jobs (offline watchdog, baselines/anomaly)
+  background jobs (offline watchdog, baselines/anomaly, predictive PME)
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from server.config import settings
 from server.db import async_session_factory
 from server.ingest import handle_records, registry
 from server.init_db import init_db
-from server.services import baselines, watchdog
+from server.services import baselines, predictor, watchdog
 from server.teltonika.server import TeltonikaListener
 from server.ws import hub
 
@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
     await listener.start()
     watchdog.start()
     baselines.start()
+    predictor.start()
     logger.info("PREDICT %s up — dashboard :8000, trackers :%d",
                 settings.APP_VERSION, settings.TELTONIKA_PORT)
     try:
@@ -63,6 +64,7 @@ async def lifespan(app: FastAPI):
         await listener.stop()
         await watchdog.stop()
         await baselines.stop()
+        await predictor.stop()
 
 
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, lifespan=lifespan)

@@ -139,6 +139,16 @@ async def complete(
         if alert is not None and alert.status == AlertStatus.ACTIVE:
             alert.status = AlertStatus.RESOLVED
             alert.resolved_at = now
+        # Reset predictive component wear when a predict_* work order completes
+        if alert is not None and alert.rule_id:
+            from server.models import Rule
+            from server.services import predictor
+            rule = await session.get(Rule, alert.rule_id)
+            component = predictor.component_for_rule_key(rule.key if rule else None)
+            if component:
+                await predictor.reset_component(
+                    session, wo.vehicle_id, component, odometer=odometer,
+                )
 
     logger.info("WorkOrder #%d completed → maintenance_log", wo.id)
     return wo

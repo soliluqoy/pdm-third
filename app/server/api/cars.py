@@ -18,6 +18,7 @@ from server.ingest import registry
 from server.models import (
     Alert,
     AlertStatus,
+    ComponentHealth,
     DtcEvent,
     DriverScore,
     DrivingEvent,
@@ -32,6 +33,7 @@ from server.models import (
 from server.schemas import CarCreate, CarUpdate
 from server.state import live_store
 from server.services import trips as trips_service
+from server.services.predictor import compact_prognostics, prognostics_dict
 
 logger = logging.getLogger("predict.api.cars")
 router = APIRouter(prefix="/cars", tags=["cars"])
@@ -42,10 +44,22 @@ def _car_dict(v: Vehicle) -> dict:
         "id": v.id, "name": v.name, "license_plate": v.license_plate,
         "make": v.make, "model": v.model, "year": v.year, "vin": v.vin,
         "imei": v.imei, "device_type": v.device_type, "sim_phone": v.sim_phone,
+        "mass_kg": v.mass_kg,
+        "oil_capacity_l": v.oil_capacity_l,
+        "brake_pad_capacity_mj": v.brake_pad_capacity_mj,
+        "last_oil_change_at": v.last_oil_change_at.isoformat() if v.last_oil_change_at else None,
+        "last_oil_change_odo": v.last_oil_change_odo,
+        "last_brake_service_at": v.last_brake_service_at.isoformat() if v.last_brake_service_at else None,
+        "last_brake_service_odo": v.last_brake_service_odo,
         "health": v.health.value,
         "last_seen": v.last_seen.isoformat() if v.last_seen else None,
         "created_at": v.created_at.isoformat() if v.created_at else None,
     }
+
+
+async def _prognostics_by_vehicle(session: AsyncSession) -> dict[int, ComponentHealth]:
+    rows = (await session.execute(select(ComponentHealth))).scalars().all()
+    return {r.vehicle_id: r for r in rows}
 
 
 async def _open_counts(session: AsyncSession) -> dict[int, dict]:
@@ -93,12 +107,14 @@ async def list_cars(session: AsyncSession = SessionDep):
         select(Vehicle).order_by(Vehicle.name)
     )).scalars().all())
     counts = await _open_counts(session)
+    prog = await _prognostics_by_vehicle(session)
     return [
         {
             **_car_dict(v),
             "live": live_store.get(v.id).to_dict(settings.OFFLINE_AFTER_SECONDS),
             "open_alerts": counts.get(v.id, {}).get("alerts", 0),
             "open_work_orders": counts.get(v.id, {}).get("work_orders", 0),
+            "prognostics": compact_prognostics(prog.get(v.id)),
         }
         for v in vehicles
     ]
@@ -115,13 +131,37 @@ async def get_car(vehicle_id: int, session: AsyncSession = SessionDep):
         select(DriverScore).where(
             DriverScore.vehicle_id == vehicle_id, DriverScore.date == today)
     )).scalar_one_or_none()
+    health = await session.get(ComponentHealth, vehicle_id)
     return {
         **_car_dict(v),
         "live": live_store.get(v.id).to_dict(settings.OFFLINE_AFTER_SECONDS),
         "open_alerts": counts.get(v.id, {}).get("alerts", 0),
         "open_work_orders": counts.get(v.id, {}).get("work_orders", 0),
         "today_score": score.score if score else None,
+        "prognostics": compact_prognostics(health),
     }
+
+
+@router.get("/{vehicle_id}/prognostics")
+async def car_prognostics(vehicle_id: int, session: AsyncSession = SessionDep):
+    if await session.get(Vehicle, vehicle_id) is None:
+        raise HTTPException(404, "Car not found")
+    health = await session.get(ComponentHealth, vehicle_id)
+    payload = prognostics_dict(health)
+    if payload is None:
+        return {
+            "vehicle_id": vehicle_id,
+            "battery_score": None,
+            "brake_score": None,
+            "oil_score": None,
+            "battery_rul_days": None,
+            "brake_remaining_km": None,
+            "oil_remaining_km": None,
+            "drivers": {},
+            "updated_at": None,
+            "collecting": True,
+        }
+    return {"vehicle_id": vehicle_id, "collecting": False, **payload}
 
 
 @router.patch("/{vehicle_id}")

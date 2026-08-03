@@ -141,12 +141,13 @@ async def _fire(
     title: str,
     message: str,
     trigger_value: Optional[float],
+    severity: Optional[Severity] = None,
 ) -> None:
     alert, created = await alerts.create_or_refresh(
         session,
         rule=rule,
         vehicle_id=vehicle_id,
-        severity=rule.severity,
+        severity=severity or rule.severity,
         title=title,
         message=message,
         trigger_value=trigger_value,
@@ -194,8 +195,9 @@ async def fire_rule(
     title: str,
     message: str,
     trigger_value: Optional[float] = None,
+    severity: Optional[Severity] = None,
 ) -> None:
-    """Public entry for out-of-band detections (baselines/anomaly job)."""
+    """Public entry for out-of-band detections (baselines/anomaly/PME)."""
     await _fire(
         session,
         vehicle_id=vehicle_id,
@@ -204,6 +206,7 @@ async def fire_rule(
         title=title,
         message=message,
         trigger_value=trigger_value,
+        severity=severity,
     )
 
 
@@ -508,6 +511,37 @@ PRESETS: list[dict] = [
         "severity": Severity.INFO, "priority": WorkOrderPriority.LOW,
         "auto_work_order": False,
         "recommendation": None,   # FYI only — no work order drafted
+    },
+    # Predictive maintenance (also ensured lazily by predictor.py)
+    {
+        "key": "predict_battery", "rule_type": RuleType.ANOMALY,
+        "name": "Battery failure likely soon",
+        "description": "Physics-informed battery RUL from resting/crank voltage and short trips",
+        "sensor_type": "predict_battery", "operator": "<",
+        "threshold_value": 40, "duration_seconds": 0,
+        "severity": Severity.WARNING, "priority": WorkOrderPriority.HIGH,
+        "auto_work_order": True,
+        "recommendation": "Test / replace battery — estimated remaining useful life is low.",
+    },
+    {
+        "key": "predict_brakes", "rule_type": RuleType.ANOMALY,
+        "name": "Brake pads wearing out",
+        "description": "Cumulative kinetic energy absorbed by brakes since last service",
+        "sensor_type": "predict_brakes", "operator": "<",
+        "threshold_value": 25, "duration_seconds": 0,
+        "severity": Severity.WARNING, "priority": WorkOrderPriority.HIGH,
+        "auto_work_order": True,
+        "recommendation": "Inspect / replace brake pads — predictive wear model is low.",
+    },
+    {
+        "key": "predict_oil", "rule_type": RuleType.ANOMALY,
+        "name": "Oil change recommended",
+        "description": "Oil degradation from distance, thermal stress, and short cold trips",
+        "sensor_type": "predict_oil", "operator": "<",
+        "threshold_value": 30, "duration_seconds": 0,
+        "severity": Severity.WARNING, "priority": WorkOrderPriority.MEDIUM,
+        "auto_work_order": True,
+        "recommendation": "Oil & filter change — predictive oil health is low.",
     },
 ]
 

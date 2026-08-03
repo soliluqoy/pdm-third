@@ -29,6 +29,12 @@ DEFAULTS: dict[str, str] = {
         "harsh_accel": 8, "harsh_brake": 10, "harsh_corner": 8,
         "speeding": 6, "idling": 3, "high_rpm": 4,
     }),
+    # Predictive maintenance engine (physics / heuristic models)
+    "predict.brake_pad_capacity_mj": "80",
+    "predict.brake_decel_g": "0.25",
+    "predict.battery_warn_rul_days": "30",
+    "predict.oil_interval_km": "10000",
+    "predict.mass_kg_default": "1500",
 }
 
 DESCRIPTIONS: dict[str, str] = {
@@ -38,6 +44,11 @@ DESCRIPTIONS: dict[str, str] = {
     "behavior.accel_threshold_ms2": "Harsh accel/brake sensitivity (m/s², lower = more sensitive)",
     "behavior.high_rpm_threshold": "High-RPM threshold",
     "behavior.score_weights": "Driving-score penalty weights per event type (JSON)",
+    "predict.brake_pad_capacity_mj": "Brake pad energy budget (MJ) before 0% life",
+    "predict.brake_decel_g": "Min deceleration (g) counted as a braking wear event",
+    "predict.battery_warn_rul_days": "Fire battery prediction when RUL falls below this",
+    "predict.oil_interval_km": "Baseline oil-change interval (km)",
+    "predict.mass_kg_default": "Default vehicle mass (kg) when not set on the car",
 }
 
 _cache: dict[str, str] = {}

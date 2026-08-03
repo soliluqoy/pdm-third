@@ -12,12 +12,14 @@ from server.config import settings
 from server.models import (
     Alert,
     AlertStatus,
+    ComponentHealth,
     Severity,
     Vehicle,
     WorkOrder,
     WorkOrderStatus,
 )
 from server.state import live_store
+from server.services.predictor import compact_prognostics
 
 router = APIRouter(tags=["live"])
 
@@ -31,6 +33,8 @@ async def overview(session: AsyncSession = SessionDep):
 
     alerts_by_vehicle = await alerts_service.count_active_by_vehicle(session)
     wo_by_vehicle = await wo_service.count_open_by_vehicle(session)
+    prog_rows = (await session.execute(select(ComponentHealth))).scalars().all()
+    prog = {r.vehicle_id: r for r in prog_rows}
 
     return [
         {
@@ -40,6 +44,7 @@ async def overview(session: AsyncSession = SessionDep):
             "live": live_store.get(v.id).to_dict(settings.OFFLINE_AFTER_SECONDS),
             "alerts": alerts_by_vehicle.get(v.id, {}),
             "open_work_orders": wo_by_vehicle.get(v.id, 0),
+            "prognostics": compact_prognostics(prog.get(v.id)),
         }
         for v in vehicles
     ]

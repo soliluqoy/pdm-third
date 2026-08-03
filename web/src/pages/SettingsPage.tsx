@@ -49,9 +49,11 @@ export default function SettingsPage() {
           PREDICT watches these for you. Tune the limits — nothing else to configure.
         </p>
         <div className="space-y-2">
-          {rules?.filter((r) => r.rule_type !== "anomaly").map((r) => (
-            <RuleRow key={r.id} rule={r} />
-          ))}
+          {rules
+            ?.filter((r) => r.rule_type !== "anomaly" || r.key.startsWith("predict_"))
+            .map((r) => (
+              <RuleRow key={r.id} rule={r} />
+            ))}
         </div>
       </section>
 
@@ -137,7 +139,7 @@ function CarRow({ car, onSms }: { car: Car; onSms: () => void }) {
 function CarForm({
   initial, onSubmit, busy, error, submitLabel,
 }: {
-  initial?: Partial<Car>;
+  initial?: Record<string, unknown>;
   onSubmit: (values: any) => void;
   busy: boolean;
   error: string | null;
@@ -145,7 +147,10 @@ function CarForm({
 }) {
   const [v, setV] = useState<any>({
     name: "", imei: "", device_type: "fmc001",
-    license_plate: "", sim_phone: "", ...initial,
+    license_plate: "", sim_phone: "",
+    make: "", model: "", year: "", vin: "",
+    mass_kg: "", last_oil_change_odo: "", last_brake_service_odo: "",
+    ...initial,
   });
   const set = (k: string) => (e: any) => setV({ ...v, [k]: e.target.value });
 
@@ -195,6 +200,49 @@ function CarForm({
           <input className="input" value={v.sim_phone ?? ""} onChange={set("sim_phone")} placeholder="+60…" />
         </div>
       </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="label">Make</label>
+          <input className="input" value={v.make ?? ""} onChange={set("make")} placeholder="Toyota" />
+        </div>
+        <div>
+          <label className="label">Model</label>
+          <input className="input" value={v.model ?? ""} onChange={set("model")} placeholder="Hilux" />
+        </div>
+        <div>
+          <label className="label">Year</label>
+          <input className="input" value={v.year ?? ""} onChange={set("year")} inputMode="numeric" placeholder="2021" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="label">Mass (kg, for brake wear)</label>
+          <input
+            className="input" value={v.mass_kg ?? ""} onChange={set("mass_kg")}
+            inputMode="decimal" placeholder="1500"
+          />
+        </div>
+        <div>
+          <label className="label">VIN (optional)</label>
+          <input className="input" value={v.vin ?? ""} onChange={set("vin")} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="label">Last oil change odo (km)</label>
+          <input
+            className="input" value={v.last_oil_change_odo ?? ""} onChange={set("last_oil_change_odo")}
+            inputMode="decimal" placeholder="45000"
+          />
+        </div>
+        <div>
+          <label className="label">Last brake service odo (km)</label>
+          <input
+            className="input" value={v.last_brake_service_odo ?? ""} onChange={set("last_brake_service_odo")}
+            inputMode="decimal" placeholder="40000"
+          />
+        </div>
+      </div>
       {error && <p className="text-sm text-bad">{error}</p>}
       <div className="flex justify-end pt-1">
         <button
@@ -209,6 +257,29 @@ function CarForm({
   );
 }
 
+function optNum(raw: unknown): number | undefined {
+  if (raw === null || raw === undefined || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : parseFloat(String(raw));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function carPayload(v: any, { includeImei }: { includeImei: boolean }) {
+  const year = optNum(v.year);
+  return {
+    name: v.name.trim(),
+    ...(includeImei ? { imei: v.imei.trim(), device_type: v.device_type } : {}),
+    license_plate: v.license_plate || (includeImei ? undefined : null),
+    sim_phone: v.sim_phone || (includeImei ? undefined : null),
+    make: v.make || (includeImei ? undefined : null),
+    model: v.model || (includeImei ? undefined : null),
+    year: year ?? (includeImei ? undefined : null),
+    vin: v.vin || (includeImei ? undefined : null),
+    mass_kg: optNum(v.mass_kg) ?? (includeImei ? undefined : null),
+    last_oil_change_odo: optNum(v.last_oil_change_odo) ?? (includeImei ? undefined : null),
+    last_brake_service_odo: optNum(v.last_brake_service_odo) ?? (includeImei ? undefined : null),
+  };
+}
+
 function AddCarModal({
   open, onClose, onCreated,
 }: {
@@ -219,14 +290,7 @@ function AddCarModal({
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const create = useMutation({
-    mutationFn: (v: any) =>
-      api.registerCar({
-        name: v.name.trim(),
-        imei: v.imei.trim(),
-        device_type: v.device_type,
-        license_plate: v.license_plate || undefined,
-        sim_phone: v.sim_phone || undefined,
-      }),
+    mutationFn: (v: any) => api.registerCar(carPayload(v, { includeImei: true })),
     onSuccess: (car) => {
       queryClient.invalidateQueries({ queryKey: ["cars"] });
       queryClient.invalidateQueries({ queryKey: qk.overview });
@@ -255,12 +319,7 @@ function EditCarModal({ car, open, onClose }: { car: Car; open: boolean; onClose
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const update = useMutation({
-    mutationFn: (v: any) =>
-      api.updateCar(car.id, {
-        name: v.name.trim(),
-        license_plate: v.license_plate || null,
-        sim_phone: v.sim_phone || null,
-      }),
+    mutationFn: (v: any) => api.updateCar(car.id, carPayload(v, { includeImei: false })),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cars"] });
       queryClient.invalidateQueries({ queryKey: qk.overview });
@@ -273,7 +332,20 @@ function EditCarModal({ car, open, onClose }: { car: Car; open: boolean; onClose
   return (
     <Modal open={open} onClose={onClose} title={`Edit ${car.name}`}>
       <CarForm
-        initial={{ name: car.name, license_plate: car.license_plate ?? "", sim_phone: car.sim_phone ?? "", imei: undefined, device_type: undefined }}
+        initial={{
+          name: car.name,
+          license_plate: car.license_plate ?? "",
+          sim_phone: car.sim_phone ?? "",
+          make: car.make ?? "",
+          model: car.model ?? "",
+          year: car.year?.toString() ?? "",
+          vin: car.vin ?? "",
+          mass_kg: car.mass_kg?.toString() ?? "",
+          last_oil_change_odo: car.last_oil_change_odo?.toString() ?? "",
+          last_brake_service_odo: car.last_brake_service_odo?.toString() ?? "",
+          imei: undefined,
+          device_type: undefined,
+        }}
         busy={update.isPending}
         error={error}
         submitLabel="Save"
@@ -356,8 +428,15 @@ function RuleRow({ rule }: { rule: Rule }) {
   });
 
   const isScheduled = rule.rule_type === "scheduled";
-  const unit = isScheduled ? "km" : rule.rule_type === "behavior" ? "events/day" : "";
-  const editableNumber = rule.threshold_value !== null || isScheduled;
+  const isPredict = rule.key.startsWith("predict_");
+  const unit = isScheduled
+    ? "km"
+    : rule.rule_type === "behavior"
+      ? "events/day"
+      : isPredict
+        ? "score"
+        : "";
+  const editableNumber = !isPredict && (rule.threshold_value !== null || isScheduled);
 
   return (
     <div className="card px-4 py-3 flex items-center gap-3">
@@ -391,6 +470,11 @@ function RuleRow({ rule }: { rule: Rule }) {
           />
           {unit && <span className="text-xs text-muted w-8">{unit}</span>}
           {saved && <Check size={14} className="text-ok" />}
+        </div>
+      )}
+      {isPredict && rule.threshold_value != null && (
+        <div className="text-xs text-muted shrink-0 tabular-nums">
+          fires &lt; {rule.threshold_value} score
         </div>
       )}
     </div>

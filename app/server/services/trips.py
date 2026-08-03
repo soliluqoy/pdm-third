@@ -10,6 +10,7 @@ event loop, one writer per vehicle, so a dict is both safe and faster.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -24,7 +25,9 @@ from server.models import (
     DrivingEventSource,
     DrivingEventType,
     Trip,
+    Vehicle,
 )
+from server.rules import evaluate_behavior
 from server.ws import hub
 
 logger = logging.getLogger("predict.trips")
@@ -293,6 +296,20 @@ async def _close_trip(session, trip: Trip, ts, odometer, fuel, state) -> None:
         "duration_seconds": trip.duration_seconds,
     })
     await recompute_daily_score(session, trip.vehicle_id, trip.start_ts.date())
+
+    # Daily behavior rules (e.g. harsh_braking_day) — was defined but never called
+    vehicle = await session.get(Vehicle, trip.vehicle_id)
+    if vehicle is not None:
+        await evaluate_behavior(
+            session,
+            vehicle_id=vehicle.id,
+            vehicle_name=vehicle.name,
+            ts=ts,
+        )
+
+    # Predictive maintenance: accumulate brake energy + refresh scores (own session)
+    from server.services import predictor
+    asyncio.create_task(predictor.on_trip_closed(trip.vehicle_id, trip.id))
 
 
 # ── Daily score ───────────────────────────────────────────────────────────────

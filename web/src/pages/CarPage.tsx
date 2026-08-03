@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, qk } from "../api";
 import HealthRing from "../components/HealthRing";
+import ScoreRing from "../components/ScoreRing";
 import SensorChart from "../components/SensorChart";
 import VitalTile from "../components/VitalTile";
 import { HEALTH_META, fmtDateTime, timeAgo } from "../format";
@@ -43,6 +44,11 @@ export default function CarPage() {
   const { data: timeline } = useQuery({
     queryKey: qk.timeline(carId),
     queryFn: () => api.timeline(carId),
+    refetchInterval: 60_000,
+  });
+  const { data: prognostics } = useQuery({
+    queryKey: qk.prognostics(carId),
+    queryFn: () => api.prognostics(carId),
     refetchInterval: 60_000,
   });
 
@@ -121,6 +127,52 @@ export default function CarPage() {
           </div>
         </div>
       </div>
+
+      {/* Predictive component health */}
+      <section className="card p-4">
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide mb-3">
+          Predictive health
+        </h2>
+        {prognostics?.collecting || (
+          prognostics?.battery_score == null
+          && prognostics?.brake_score == null
+          && prognostics?.oil_score == null
+        ) ? (
+          <p className="text-sm text-muted">
+            Collecting data… scores appear after the first closed trip or hourly prediction run.
+          </p>
+        ) : (
+          <div className="flex flex-wrap justify-around gap-4">
+            <ScoreRing
+              label="Battery"
+              score={prognostics?.battery_score}
+              detail={
+                prognostics?.battery_rul_days != null
+                  ? `RUL ~${prognostics.battery_rul_days}d · ${prognostics.drivers?.battery?.top_reason ?? ""}`
+                  : prognostics?.drivers?.battery?.top_reason
+              }
+            />
+            <ScoreRing
+              label="Brakes"
+              score={prognostics?.brake_score}
+              detail={
+                prognostics?.brake_remaining_km != null
+                  ? `~${prognostics.brake_remaining_km.toLocaleString()} km · ${prognostics.drivers?.brakes?.top_reason ?? ""}`
+                  : prognostics?.drivers?.brakes?.top_reason
+              }
+            />
+            <ScoreRing
+              label="Oil"
+              score={prognostics?.oil_score}
+              detail={
+                prognostics?.oil_remaining_km != null
+                  ? `~${prognostics.oil_remaining_km.toLocaleString()} km · ${prognostics.drivers?.oil?.top_reason ?? ""}`
+                  : prognostics?.drivers?.oil?.top_reason
+              }
+            />
+          </div>
+        )}
+      </section>
 
       {/* Vitals by system */}
       {vitals?.groups.length ? (

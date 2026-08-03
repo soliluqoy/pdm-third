@@ -18,6 +18,11 @@ class CarCreate(BaseModel):
     model: Optional[str] = None
     year: Optional[int] = None
     vin: Optional[str] = None
+    mass_kg: Optional[float] = Field(default=None, ge=500, le=50000)
+    oil_capacity_l: Optional[float] = Field(default=None, ge=1, le=50)
+    brake_pad_capacity_mj: Optional[float] = Field(default=None, ge=1, le=1000)
+    last_oil_change_odo: Optional[float] = Field(default=None, ge=0)
+    last_brake_service_odo: Optional[float] = Field(default=None, ge=0)
 
 
 class CarUpdate(BaseModel):
@@ -28,6 +33,11 @@ class CarUpdate(BaseModel):
     model: Optional[str] = None
     year: Optional[int] = None
     vin: Optional[str] = None
+    mass_kg: Optional[float] = Field(default=None, ge=500, le=50000)
+    oil_capacity_l: Optional[float] = Field(default=None, ge=1, le=50)
+    brake_pad_capacity_mj: Optional[float] = Field(default=None, ge=1, le=1000)
+    last_oil_change_odo: Optional[float] = Field(default=None, ge=0)
+    last_brake_service_odo: Optional[float] = Field(default=None, ge=0)
 
 
 # ── Work orders ───────────────────────────────────────────────────────────────

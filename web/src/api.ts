@@ -1,7 +1,7 @@
 // PREDICT v3 — REST client (thin fetch wrapper) + shared query keys
 import type {
   Alert, AppSettings, Car, DrivingCalendar, DrivingSummary, History,
-  MaintenanceEntry, OverviewCar, Rule, Summary, TimelineEvent, Trip,
+  MaintenanceEntry, OverviewCar, Prognostics, Rule, Summary, TimelineEvent, Trip,
   DrivingEvent, Vitals, WorkOrder,
 } from "./types";
 
@@ -45,6 +45,7 @@ export const qk = {
   drivingEvents: (id: number, day?: string | null) =>
     ["driving-events", id, day ?? "all"] as const,
   timeline: (id: number) => ["timeline", id] as const,
+  prognostics: (id: number) => ["prognostics", id] as const,
   settings: ["settings"] as const,
   rules: ["rules"] as const,
 };
@@ -61,6 +62,7 @@ export const api = {
   updateCar: (id: number, body: unknown) => patch<Car>(`/cars/${id}`, body),
   deleteCar: (id: number) => request(`/cars/${id}`, { method: "DELETE" }),
   vitals: (id: number) => request<Vitals>(`/cars/${id}/vitals`),
+  prognostics: (id: number) => request<Prognostics>(`/cars/${id}/prognostics`),
   history: (id: number, sensor: string, hours: number) =>
     request<History>(`/cars/${id}/history?sensor_type=${sensor}&hours=${hours}`),
   timeline: (id: number) => request<{ events: TimelineEvent[] }>(`/cars/${id}/timeline`),

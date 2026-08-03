@@ -15,6 +15,13 @@ import { HEALTH_META, timeAgo } from "../format";
 import type { LiveState, OverviewCar } from "../types";
 import { useWs } from "../ws";
 
+function scoreTint(score: number | null | undefined): string {
+  if (score === null || score === undefined) return "text-muted";
+  if (score < 25) return "text-bad";
+  if (score < 40) return "text-warn";
+  return "text-ok";
+}
+
 // Which sensors make the card's glance row (first found wins per slot)
 const GLANCE: { keys: string[]; name: string; decimals: number }[] = [
   { keys: ["vehicle_speed_obd", "vehicle_speed"], name: "Speed", decimals: 0 },
@@ -224,6 +231,21 @@ function CarCard({ car }: { car: OverviewCar }) {
             <span className="text-muted">· {timeAgo(car.last_seen)}</span>
             {car.live?.ignition && <span className="chip bg-ok/10 text-ok">Driving</span>}
           </div>
+          {car.prognostics && (
+            <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] tabular-nums">
+              <span className={scoreTint(car.prognostics.battery)}>
+                Bat {car.prognostics.battery != null ? Math.round(car.prognostics.battery) : "—"}
+              </span>
+              <span className="text-muted">·</span>
+              <span className={scoreTint(car.prognostics.brakes)}>
+                Brk {car.prognostics.brakes != null ? Math.round(car.prognostics.brakes) : "—"}
+              </span>
+              <span className="text-muted">·</span>
+              <span className={scoreTint(car.prognostics.oil)}>
+                Oil {car.prognostics.oil != null ? Math.round(car.prognostics.oil) : "—"}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1.5">
           {(car.alerts?.critical ?? 0) > 0 && (
