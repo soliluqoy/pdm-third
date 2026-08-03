@@ -141,7 +141,7 @@ Everything is optional — the defaults in `.env.example` work out of the box.
 ```bash
 # backend (db from compose)
 docker compose up -d db
-pip install -r app/requirements.txt pytest
+pip install -r app/requirements.txt
 cd app
 uvicorn server.main:app --reload     # API on :8000, trackers on :5123
 ```
@@ -154,74 +154,9 @@ npm run dev                          # http://localhost:5173
 ```
 
 ```bash
-# tests & type gate
-cd app
-python -m pytest tests -q            # alerts, rules, codec8e, work orders, sims
-```
-
-```bash
+# type gate
 cd web
 npm run build                        # tsc type check + production bundle
-```
-
-### Fake a tracker (real Codec 8E over TCP — the production path)
-
-```bash
-python tools/replay.py --imei 352999001234567 --scenario drive
-python tools/replay.py --imei 352999001234567 --scenario overheat   # fires a rule
-python tools/replay.py --imei 352999001234567 --scenario burst      # old buffered data (no phantom alerts)
-python tools/smoke.py status                                        # snapshot: active alerts, suggested WOs, fleet health
-python tools/smoke.py patch-overheat 5                              # shorten the overheat sustain window (demo)
-```
-
-Register the car first (Settings → Add car) with the same IMEI, or records are
-dropped as unknown.
-
-### Simulate an FMC150 car (wired CAN tracker — full CAN vitals)
-
-`tools/simulate_fmc150.py` is a virtual car with realistic physics streaming the
-FMC150 CAN parameter set (RPM, coolant/oil temps, oil pressure, throttle, fuel,
-CAN odometer, engine hours, CAN battery voltage, service countdown, VIN, DTCs,
-eco-driving events).
-
-```bash
-python tools/simulate_fmc150.py --register                  # add the car, then drive (default: commute)
-python tools/simulate_fmc150.py --scenario overheat         # fires BOTH overheating rules
-python tools/simulate_fmc150.py --scenario weak_battery     # "Car battery low"
-python tools/simulate_fmc150.py --scenario dtc              # check-engine codes
-python tools/simulate_fmc150.py --scenario service          # "Service due soon"
-```
-
-### Watch every FMC150 sensor on a real Kuala Lumpur drive (standalone)
-
-`tools/kl_drive_sim.py` needs **no server, no DB — nothing from `app/`**. A
-virtual Corolla with an FMC150 drives a real 16 km KL route (Mid Valley →
-KL Sentral → Bukit Bintang → Jalan Tun Razak → the AKLEH elevated highway →
-Ampang → back through the evening rain to the Petronas Towers at KLCC) and
-renders **every sensor the module reports**, live, in your terminal —
-powertrain, temps, fuel, electrical, counters, GPS, GSM, VIN/DTCs, plus the
-device-native harsh accel/brake/corner and overspeed events as they fall out
-of the actual driving. Great for demos and for seeing what the CAN parameter
-set looks like before any server enters the picture.
-
-```bash
-python tools/kl_drive_sim.py                  # live dashboard, 10x speed
-python tools/kl_drive_sim.py --rate 1         # true real-time rush hour
-python tools/kl_drive_sim.py --avl            # + raw AVL IO wire values
-python tools/kl_drive_sim.py --plain          # one log line per tick (pipes)
-python tools/kl_drive_sim.py --hybrid --dtc   # HV battery + check-engine
-python tools/kl_drive_sim.py --list-route     # the 20-leg itinerary
-python tools/kl_drive_sim.py --jsonl drive.jsonl   # export every tick
-```
-
-Want the drive **in the web dashboard** too? With the stack up
-(`docker compose up -d`), add `--stream` — every tick is also sent to the
-server as a real Codec 8E packet (the production path), so the Home card
-goes green and the Car / Driving pages fill in live:
-
-```bash
-python tools/kl_drive_sim.py --stream --register        # first time
-python tools/kl_drive_sim.py --stream                   # already registered
 ```
 
 ## API overview
@@ -283,8 +218,7 @@ pdm-third/
 │   │   ├── api/                # live, cars, alerts, workorders+maintenance,
 │   │   │                       # driving, rules, settings
 │   │   └── services/           # watchdog, health, trips, baselines
-│   └── tests/                  # pytest: alerts, rules, codec8e, WOs, sims
-├── tools/                      # replay / simulate_fmc150 / kl_drive_sim / smoke
+├── tools/                      # clear_history (ops utility)
 └── web/                        # React 18 + Vite + Tailwind dashboard
 ```
 
