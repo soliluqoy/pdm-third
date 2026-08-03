@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "./auth";
 import type { WsEvent } from "./types";
 import { qk } from "./api";
 
@@ -27,6 +28,7 @@ export function WsProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false);
   const handlers = useRef(new Map<string, Set<Handler>>());
   const queryClient = useQueryClient();
+  const { authenticated } = useAuth();
 
   const subscribe = useCallback((type: string, handler: Handler) => {
     let set = handlers.current.get(type);
@@ -41,6 +43,9 @@ export function WsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Don't connect until the user is authenticated (or auth is disabled).
+    if (!authenticated) return;
+
     let ws: WebSocket | null = null;
     let closed = false;
     let retry: ReturnType<typeof setTimeout>;
@@ -99,7 +104,7 @@ export function WsProvider({ children }: { children: ReactNode }) {
       clearTimeout(retry);
       ws?.close();
     };
-  }, [queryClient]);
+  }, [authenticated, queryClient]);
 
   return (
     <WsContext.Provider value={{ connected, subscribe }}>

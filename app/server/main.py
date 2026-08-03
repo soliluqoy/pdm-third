@@ -13,12 +13,14 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from server.api import api_router
+from server.auth import auth as auth_api
+from server.auth import auth_enabled, require_auth, validate_token
 from server.config import settings
 from server.db import async_session_factory
 from server.ingest import handle_records, registry
@@ -74,7 +76,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router)
+# Auth endpoints (login/logout/me) are always open; everything else under
+# /api/v1 requires a valid session when ADMIN_PASSWORD is set.
+app.include_router(auth_api.router, prefix="/api/v1", tags=["auth"])
+app.include_router(api_router, dependencies=[Depends(require_auth)])
 
 
 @app.get("/health")
@@ -89,6 +94,12 @@ async def health():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    # Protect the live feed when auth is enabled (cookie sent on the handshake).
+    if auth_enabled():
+        token = ws.cookies.get("pdm_session")
+        if not validate_token(token or ""):
+            await ws.close(code=4401)
+            return
     await hub.connect(ws)
     try:
         while True:

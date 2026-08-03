@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     # Pre-fills the SMS setup templates shown in Settings (not used by the listener).
     TRACKER_PUBLIC_HOST: str = "<YOUR_SERVER_IP>"
 
+    # ── Optional single-admin login ───────────────────────────────────────────
+    # When ADMIN_PASSWORD is set, the dashboard + API + WebSocket require login.
+    # Leave empty to disable auth entirely (local dev / no auth).
+    ADMIN_PASSWORD: str = ""
+    # Secret used to sign session cookies. Auto-generated and persisted to a
+    # file if left empty.
+    AUTH_SECRET: str = ""
+
     # ── Freshness / lifecycle ─────────────────────────────────────────────────
     # Rules only fire for records fresher than this; older (buffered) records
     # are stored but never alert.
