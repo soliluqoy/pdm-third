@@ -90,7 +90,7 @@ function CarRow({ car, onSms }: { car: Car; onSms: () => void }) {
         <CarIcon size={18} />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-slate-100">
+        <div className="text-sm font-medium text-slate-800">
           {car.name}
           {car.license_plate && <span className="text-muted font-normal"> · {car.license_plate}</span>}
         </div>
@@ -115,7 +115,7 @@ function CarRow({ car, onSms }: { car: Car; onSms: () => void }) {
       <EditCarModal car={car} open={editOpen} onClose={() => setEditOpen(false)} />
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Remove car?">
         <p className="text-sm text-muted">
-          This deletes <span className="text-slate-200">{car.name}</span> and all its history
+          This deletes <span className="text-slate-800 font-medium">{car.name}</span> and all its history
           (readings, alerts, work orders, trips). This cannot be undone.
         </p>
         <div className="flex justify-end gap-2 mt-4">
@@ -176,7 +176,7 @@ function CarForm({
                 key={m.id}
                 type="button"
                 onClick={() => setV({ ...v, device_type: m.id })}
-                className={`card p-3 text-left ${v.device_type === m.id ? "border-accent/50" : ""}`}
+                className={`card p-3 text-left transition-colors ${v.device_type === m.id ? "!border-accent/50 bg-accent-soft" : ""}`}
               >
                 <div className="text-sm font-semibold">{m.label}</div>
                 <div className="text-xs text-muted">{m.hint}</div>
@@ -303,11 +303,11 @@ function SmsModal({ car, onClose }: { car: Car | null; onClose: () => void }) {
 
   return (
     <Modal open onClose={onClose} title={`Set up ${car.device_type.toUpperCase()} tracking`}>
-      <ol className="text-sm text-slate-300 space-y-2 list-decimal list-inside mb-4">
+      <ol className="text-sm text-slate-600 space-y-2 list-decimal list-inside mb-4">
         <li>Copy the text below.</li>
         <li>
           Send it as an SMS to the tracker's SIM
-          {car.sim_phone ? <> (<span className="text-slate-100">{car.sim_phone}</span>)</> : ""}.
+          {car.sim_phone ? <> (<span className="text-slate-800 font-medium">{car.sim_phone}</span>)</> : ""}.
         </li>
         <li>The tracker connects within a minute — the car turns green on Home.</li>
       </ol>
@@ -328,7 +328,7 @@ function SmsModal({ car, onClose }: { car: Car | null; onClose: () => void }) {
         {car.device_type === "fmc001"
           ? "This uses the tracker's second server (Duplicate) — your existing platform keeps working."
           : "This points the tracker's main server at PREDICT."}
-        {" "}Set <code className="text-slate-300">TRACKER_PUBLIC_HOST</code> in .env to your server's
+        {" "}Set <code className="text-slate-700 font-medium">TRACKER_PUBLIC_HOST</code> in .env to your server's
         public IP so this message is ready to send. Two leading spaces are required if the device
         has no SMS login.
       </p>
@@ -367,7 +367,7 @@ function RuleRow({ rule }: { rule: Rule }) {
         disabled={patch.isPending}
       />
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-slate-200">{rule.name}</div>
+        <div className="text-sm text-slate-700">{rule.name}</div>
         <div className="text-xs text-muted truncate">
           {rule.description}
           {rule.severity === "critical" && <span className="text-bad"> · urgent</span>}
@@ -428,7 +428,7 @@ function Preferences({ settings }: { settings: { values: Record<string, string>;
             disabled={patch.isPending}
           />
           <div className="flex-1">
-            <div className="text-sm text-slate-200">Ask me first</div>
+            <div className="text-sm text-slate-700">Ask me first</div>
             <div className="text-xs text-muted">
               When PREDICT spots something fixable, it suggests it in Repairs instead of adding it
               straight to your to-do list.
@@ -442,7 +442,7 @@ function Preferences({ settings }: { settings: { values: Record<string, string>;
           { label: "High-RPM threshold", unit: "RPM", value: highRpm, set: setHighRpm, key: "behavior.high_rpm_threshold" },
         ].map((f) => (
           <div key={f.key} className="card px-4 py-3 flex items-center gap-3">
-            <div className="flex-1 text-sm text-slate-200">{f.label}</div>
+            <div className="flex-1 text-sm text-slate-700">{f.label}</div>
             <input
               className="input !w-24 !py-1.5 text-right tabular-nums"
               value={f.value}

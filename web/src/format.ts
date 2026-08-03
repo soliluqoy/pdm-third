@@ -37,22 +37,22 @@ export function fmtDateTime(iso: string | null | undefined): string {
 }
 
 export const HEALTH_META: Record<Health, { label: string; color: string; bg: string }> = {
-  green: { label: "All good", color: "#34D399", bg: "rgba(52,211,153,0.12)" },
-  yellow: { label: "Check soon", color: "#FBBF24", bg: "rgba(251,191,36,0.12)" },
-  red: { label: "Urgent", color: "#F87171", bg: "rgba(248,113,113,0.12)" },
-  grey: { label: "Offline", color: "#64748B", bg: "rgba(100,116,139,0.12)" },
+  green: { label: "All good", color: "#16A34A", bg: "rgba(22,163,74,0.10)" },
+  yellow: { label: "Check soon", color: "#D97706", bg: "rgba(217,119,6,0.10)" },
+  red: { label: "Urgent", color: "#DC2626", bg: "rgba(220,38,38,0.10)" },
+  grey: { label: "Offline", color: "#94A3B8", bg: "rgba(100,116,139,0.12)" },
 };
 
 export const SEVERITY_META: Record<Severity, { label: string; classes: string }> = {
-  critical: { label: "Urgent", classes: "bg-bad/15 text-bad" },
-  warning: { label: "Check soon", classes: "bg-warn/15 text-warn" },
-  info: { label: "FYI", classes: "bg-accent/15 text-accent" },
+  critical: { label: "Urgent", classes: "bg-bad/10 text-bad" },
+  warning: { label: "Check soon", classes: "bg-warn/10 text-warn" },
+  info: { label: "FYI", classes: "bg-brand/10 text-brand" },
 };
 
 export const PRIORITY_META: Record<WorkOrderPriority, { label: string; classes: string }> = {
-  urgent: { label: "Urgent", classes: "bg-bad/15 text-bad" },
-  high: { label: "High", classes: "bg-warn/15 text-warn" },
-  medium: { label: "Medium", classes: "bg-accent/15 text-accent" },
+  urgent: { label: "Urgent", classes: "bg-bad/10 text-bad" },
+  high: { label: "High", classes: "bg-warn/10 text-warn" },
+  medium: { label: "Medium", classes: "bg-brand/10 text-brand" },
   low: { label: "Low", classes: "bg-ink-800 text-muted" },
 };
 
@@ -183,8 +183,8 @@ export function eventTriggerDetail(
 }
 
 export function scoreColor(score: number | null | undefined): string {
-  if (score === null || score === undefined) return "#64748B";
-  if (score >= 85) return "#34D399";
-  if (score >= 70) return "#FBBF24";
-  return "#F87171";
+  if (score === null || score === undefined) return "#94A3B8";
+  if (score >= 85) return "#16A34A";
+  if (score >= 70) return "#D97706";
+  return "#DC2626";
 }

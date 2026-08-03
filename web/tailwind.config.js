@@ -4,23 +4,27 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Dark, EV-app inspired palette
+        // Light, console-dashboard palette (Agent Router style)
         ink: {
-          950: "#0B0E14", // app background
-          900: "#10141D", // surface
-          850: "#151B27", // raised surface
-          800: "#1B2331", // hover
+          950: "#F3F5FA", // app background
+          900: "#FFFFFF", // surface / cards
+          850: "#F5F7FB", // raised surface / subtle fills
+          800: "#ECF0F7", // hover / chip background
         },
-        line: "rgba(148,163,184,0.10)",
+        line: "rgba(15,23,42,0.08)",
         accent: {
-          DEFAULT: "#5B9BFF",
-          soft: "rgba(91,155,255,0.14)",
+          DEFAULT: "#10B981", // teal-green brand (nav active, primary buttons)
+          soft: "rgba(16,185,129,0.12)",
         },
-        ok: "#34D399",
-        warn: "#FBBF24",
-        bad: "#F87171",
-        off: "#64748B",
-        muted: "#8B94A7",
+        brand: {
+          DEFAULT: "#3B82F6", // blue (tabs, links, info)
+          soft: "rgba(59,130,246,0.10)",
+        },
+        ok: "#16A34A",
+        warn: "#D97706",
+        bad: "#DC2626",
+        off: "#94A3B8",
+        muted: "#7B8499",
       },
       fontFamily: {
         sans: [

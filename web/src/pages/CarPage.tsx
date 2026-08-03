@@ -20,12 +20,12 @@ const RANGES = [
 ];
 
 const KIND_META: Record<TimelineEvent["kind"], { label: string; classes: string }> = {
-  alert: { label: "Alert", classes: "bg-bad/15 text-bad" },
-  work_order: { label: "Work order", classes: "bg-accent/15 text-accent" },
-  maintenance: { label: "Fixed", classes: "bg-ok/15 text-ok" },
-  dtc: { label: "Fault code", classes: "bg-warn/15 text-warn" },
+  alert: { label: "Alert", classes: "bg-bad/10 text-bad" },
+  work_order: { label: "Work order", classes: "bg-brand/10 text-brand" },
+  maintenance: { label: "Fixed", classes: "bg-ok/10 text-ok" },
+  dtc: { label: "Fault code", classes: "bg-warn/10 text-warn" },
   health: { label: "Status", classes: "bg-ink-800 text-muted" },
-  trip: { label: "Trip", classes: "bg-ink-800 text-slate-300" },
+  trip: { label: "Trip", classes: "bg-ink-800 text-slate-500" },
 };
 
 export default function CarPage() {
@@ -97,9 +97,9 @@ export default function CarPage() {
         </Link>
         <HealthRing health={car.health} size={64} />
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-slate-100 truncate">{car.name}</h1>
+          <h1 className="text-2xl font-bold text-slate-900 truncate">{car.name}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-            <span style={{ color: meta.color }}>{meta.label}</span>
+            <span className="font-medium" style={{ color: meta.color }}>{meta.label}</span>
             <span>seen {timeAgo(car.last_seen)}</span>
             {vitals?.ignition !== null && vitals?.ignition !== undefined && (
               <span className="inline-flex items-center gap-1">
@@ -114,7 +114,7 @@ export default function CarPage() {
               </span>
             )}
             {car.today_score !== null && (
-              <Link to="/driving" className="chip bg-accent/15 text-accent">
+              <Link to="/driving" className="chip bg-brand/10 text-brand">
                 Driving score {car.today_score}
               </Link>
             )}
@@ -171,8 +171,8 @@ export default function CarPage() {
                   onClick={() => setHours(r.hours)}
                   className={
                     hours === r.hours
-                      ? "btn-primary !px-3 !py-1 !text-xs"
-                      : "btn-ghost !px-3 !py-1 !text-xs"
+                      ? "tab-pill tab-pill-active !px-3 !py-1 !text-xs"
+                      : "tab-pill !px-3 !py-1 !text-xs"
                   }
                 >
                   {r.label}
@@ -203,7 +203,7 @@ export default function CarPage() {
                 <div key={`${e.kind}-${e.ref_id}-${idx}`} className="card px-4 py-2.5 flex items-center gap-3">
                   <span className={`chip ${k.classes} shrink-0 w-20 justify-center`}>{k.label}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-slate-200 truncate">{e.title}</div>
+                    <div className="text-sm text-slate-700 truncate">{e.title}</div>
                     {e.detail && (
                       <div className="text-xs text-muted truncate">{e.detail}</div>
                     )}

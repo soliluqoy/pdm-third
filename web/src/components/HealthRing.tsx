@@ -19,7 +19,7 @@ export default function HealthRing({
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2} cy={size / 2} r={r}
-          fill="none" stroke="rgba(148,163,184,0.15)" strokeWidth={stroke}
+          fill="none" stroke="rgba(15,23,42,0.08)" strokeWidth={stroke}
         />
         <circle
           cx={size / 2} cy={size / 2} r={r}
@@ -32,7 +32,7 @@ export default function HealthRing({
         className="absolute inset-0 m-auto rounded-full"
         style={{
           width: size * 0.28, height: size * 0.28,
-          background: meta.color, boxShadow: `0 0 12px ${meta.color}55`,
+          background: meta.color, boxShadow: `0 0 10px ${meta.color}44`,
         }}
       />
     </div>

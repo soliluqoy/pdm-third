@@ -20,22 +20,22 @@ export default function AlertCard({ alert, compact }: { alert: Alert; compact?: 
   return (
     <div className="card p-4">
       <div className="flex items-start gap-3">
-        <div className={`mt-0.5 ${sev.classes} rounded-lg p-1.5`}>
+        <div className={`mt-0.5 ${sev.classes} rounded-full p-2`}>
           <Icon size={16} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-slate-100">{alert.title}</span>
+            <span className="font-medium text-slate-800">{alert.title}</span>
             <span className={`chip ${sev.classes}`}>{sev.label}</span>
             {alert.occurrence_count > 1 && (
-              <span className="chip bg-ink-800 text-slate-300">×{alert.occurrence_count}</span>
+              <span className="chip bg-ink-800 text-slate-500">×{alert.occurrence_count}</span>
             )}
             {alert.vehicle_name && (
               <span className="chip bg-ink-800 text-muted">{alert.vehicle_name}</span>
             )}
           </div>
           {!compact && (
-            <p className="mt-1 text-sm text-slate-300/90 leading-snug">{alert.message}</p>
+            <p className="mt-1 text-sm text-slate-500 leading-snug">{alert.message}</p>
           )}
           <div className="mt-1 text-xs text-muted">
             {timeAgo(alert.created_at)}

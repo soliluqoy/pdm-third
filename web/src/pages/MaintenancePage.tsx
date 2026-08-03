@@ -51,24 +51,28 @@ export default function MaintenancePage() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={tab === t.key ? "btn-primary" : "btn-ghost"}
-          >
-            {t.key === "suggested" && <Sparkles size={15} />}
-            {t.label}
-            {t.count ? <span className="chip bg-black/20 text-inherit">{t.count}</span> : null}
-          </button>
-        ))}
+        <div className="card inline-flex items-center gap-1 p-1">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={tab === t.key ? "tab-pill tab-pill-active" : "tab-pill"}
+            >
+              {t.key === "suggested" && <Sparkles size={15} />}
+              {t.label}
+              {t.count ? (
+                <span className="chip bg-brand/10 text-brand !px-2 tabular-nums">{t.count}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
         <div className="ml-auto flex gap-2">
           {tab === "history" && (
             <a className="btn-ghost" href={api.maintenanceCsvUrl()} download>
               <Download size={15} /> CSV
             </a>
           )}
-          <button className="btn-ghost" onClick={() => setNewOpen(true)}>
+          <button className="btn-primary" onClick={() => setNewOpen(true)}>
             <Plus size={15} /> New work order
           </button>
         </div>
@@ -101,9 +105,9 @@ export default function MaintenancePage() {
       {tab === "history" && (
         <div className="space-y-3">
           {monthSpend > 0 && (
-            <div className="card px-4 py-3 text-sm text-slate-300">
+            <div className="card px-4 py-3 text-sm text-slate-600">
               This month's maintenance spend:{" "}
-              <span className="font-semibold text-slate-100">
+              <span className="font-semibold text-slate-900">
                 ${monthSpend.toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -112,11 +116,11 @@ export default function MaintenancePage() {
             {history?.length ? (
               history.map((h) => (
                 <div key={h.id} className="card px-4 py-3 flex items-center gap-3">
-                  <div className="rounded-lg bg-ok/15 text-ok p-1.5">
+                  <div className="rounded-lg bg-ok/10 text-ok p-1.5">
                     <Wrench size={14} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-slate-200">{h.title}</div>
+                    <div className="text-sm text-slate-700">{h.title}</div>
                     {h.notes && <div className="text-xs text-muted truncate">{h.notes}</div>}
                   </div>
                   <div className="text-xs text-muted shrink-0 text-right">
@@ -183,17 +187,17 @@ function WorkOrderCard({ wo }: { wo: WorkOrder }) {
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-slate-100">{wo.title}</span>
+            <span className="font-medium text-slate-800">{wo.title}</span>
             <span className={`chip ${prio.classes}`}>{prio.label}</span>
             {wo.source === "auto" && (
-              <span className="chip bg-accent/15 text-accent">auto</span>
+              <span className="chip bg-brand/10 text-brand">auto</span>
             )}
             {wo.vehicle_name && (
               <span className="chip bg-ink-800 text-muted">{wo.vehicle_name}</span>
             )}
           </div>
           {wo.description && (
-            <p className="mt-1.5 text-sm text-slate-300/90 leading-snug">{wo.description}</p>
+            <p className="mt-1.5 text-sm text-slate-500 leading-snug">{wo.description}</p>
           )}
           <div className="mt-1 text-xs text-muted">
             {timeAgo(wo.created_at)}
@@ -252,7 +256,7 @@ function WorkOrderCard({ wo }: { wo: WorkOrder }) {
 
       <Modal open={completeOpen} onClose={() => setCompleteOpen(false)} title="Complete work order">
         <p className="text-sm text-muted mb-3">
-          This moves <span className="text-slate-200">{wo.title}</span> into the car's
+          This moves <span className="text-slate-800 font-medium">{wo.title}</span> into the car's
           permanent maintenance history.
         </p>
         <label className="label">Notes (what was done, parts)</label>

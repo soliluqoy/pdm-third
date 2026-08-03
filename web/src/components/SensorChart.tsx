@@ -6,7 +6,7 @@ import {
 import { fmtValue } from "../format";
 import type { HistoryPoint } from "../types";
 
-const axisStyle = { fontSize: 11, fill: "#8B94A7" };
+const axisStyle = { fontSize: 11, fill: "#98A2B3" };
 
 export default function SensorChart({
   points,
@@ -41,32 +41,32 @@ export default function SensorChart({
       <ResponsiveContainer width="100%" height="100%">
         {hasBand ? (
           <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-            <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
+            <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
             <XAxis dataKey="label" tick={axisStyle} tickLine={false} axisLine={false}
                    minTickGap={48} />
             <YAxis tick={axisStyle} tickLine={false} axisLine={false}
                    tickFormatter={(v: number) => fmtValue(v, decimals)} unit={unit ? ` ${unit}` : ""} />
             <Tooltip content={<ChartTip unit={unit} decimals={decimals} />} />
             <Area type="monotone" dataKey="band" stroke="none"
-                  fill="rgba(91,155,255,0.15)" isAnimationActive={false} />
-            <Line type="monotone" dataKey="value" stroke="#5B9BFF" strokeWidth={2}
+                  fill="rgba(59,130,246,0.12)" isAnimationActive={false} />
+            <Line type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2}
                   dot={false} isAnimationActive={false} />
           </ComposedChart>
         ) : (
           <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
             <defs>
               <linearGradient id="val" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#5B9BFF" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#5B9BFF" stopOpacity={0.02} />
+                <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.22} />
+                <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.02} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
+            <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
             <XAxis dataKey="label" tick={axisStyle} tickLine={false} axisLine={false}
                    minTickGap={48} />
             <YAxis tick={axisStyle} tickLine={false} axisLine={false}
                    tickFormatter={(v: number) => fmtValue(v, decimals)} unit={unit ? ` ${unit}` : ""} />
             <Tooltip content={<ChartTip unit={unit} decimals={decimals} />} />
-            <Area type="monotone" dataKey="value" stroke="#5B9BFF" strokeWidth={2}
+            <Area type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2}
                   fill="url(#val)" dot={false} isAnimationActive={false} />
           </AreaChart>
         )}
@@ -86,9 +86,9 @@ function ChartTip({
   if (!active || !payload?.length) return null;
   const p = payload[0].payload;
   return (
-    <div className="card !bg-ink-850 px-3 py-2 text-xs shadow-xl">
+    <div className="card px-3 py-2 text-xs !shadow-md">
       <div className="text-muted">{p.label}</div>
-      <div className="font-semibold text-slate-100 mt-0.5">
+      <div className="font-semibold text-slate-900 mt-0.5">
         {fmtValue(p.value, decimals)}{unit ? ` ${unit}` : ""}
       </div>
       {p.min !== undefined && p.max !== undefined && (

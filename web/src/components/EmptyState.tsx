@@ -15,10 +15,10 @@ export default function EmptyState({
 }) {
   return (
     <div className="card p-10 flex flex-col items-center text-center gap-3">
-      <div className="rounded-2xl bg-ink-800/70 p-4 text-muted">
+      <div className="rounded-2xl bg-ink-850 p-4 text-muted">
         <Icon size={28} />
       </div>
-      <div className="font-medium text-slate-200">{title}</div>
+      <div className="font-medium text-slate-800">{title}</div>
       {body && <p className="text-sm text-muted max-w-sm">{body}</p>}
       {action}
     </div>

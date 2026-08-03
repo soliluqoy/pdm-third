@@ -25,7 +25,7 @@ export default function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-3"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-3"
       onClick={onClose}
     >
       <div
@@ -33,7 +33,7 @@ export default function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
           <button className="btn-ghost !p-2" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>

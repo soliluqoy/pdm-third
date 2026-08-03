@@ -26,18 +26,18 @@ export default function AlertsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2">
+      <div className="card inline-flex items-center gap-1 p-1">
         <button
-          className={tab === "active" ? "btn-primary" : "btn-ghost"}
+          className={tab === "active" ? "tab-pill tab-pill-active" : "tab-pill"}
           onClick={() => setTab("active")}
         >
           <Bell size={15} /> Active
           {active?.length ? (
-            <span className="chip bg-black/20 text-inherit">{active.length}</span>
+            <span className="chip bg-brand/10 text-brand !px-2 tabular-nums">{active.length}</span>
           ) : null}
         </button>
         <button
-          className={tab === "history" ? "btn-primary" : "btn-ghost"}
+          className={tab === "history" ? "tab-pill tab-pill-active" : "tab-pill"}
           onClick={() => setTab("history")}
         >
           <History size={15} /> History
@@ -67,7 +67,7 @@ export default function AlertsPage() {
                 <div key={a.id} className="card px-4 py-3 flex items-center gap-3">
                   <span className={`chip ${sev.classes} shrink-0`}>{sev.label}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-slate-200 truncate">
+                    <div className="text-sm text-slate-700 truncate">
                       {a.title}
                       {a.occurrence_count > 1 && (
                         <span className="text-muted"> ×{a.occurrence_count}</span>

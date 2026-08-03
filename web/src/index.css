@@ -4,26 +4,26 @@
 
 @layer base {
   html {
-    color-scheme: dark;
+    color-scheme: light;
   }
   body {
-    @apply bg-ink-950 text-slate-200 font-sans antialiased;
+    @apply bg-ink-950 text-slate-600 font-sans antialiased;
   }
   ::selection {
-    @apply bg-accent/30;
+    @apply bg-accent/20;
   }
   * {
     scrollbar-width: thin;
-    scrollbar-color: #2a3345 transparent;
+    scrollbar-color: #CBD2DE transparent;
   }
 }
 
 @layer components {
   .card {
-    @apply bg-ink-900 border border-line rounded-2xl;
+    @apply bg-ink-900 border border-line rounded-2xl shadow-sm;
   }
   .card-hover {
-    @apply transition-colors hover:bg-ink-850 hover:border-slate-500/20;
+    @apply transition-all hover:shadow-md hover:border-slate-300/60;
   }
   .btn {
     @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2
@@ -31,17 +31,17 @@
            disabled:opacity-40 disabled:pointer-events-none select-none;
   }
   .btn-primary {
-    @apply btn bg-accent text-ink-950 hover:bg-accent/85 font-semibold;
+    @apply btn bg-accent text-white hover:bg-accent/90 font-semibold shadow-sm;
   }
   .btn-ghost {
-    @apply btn bg-ink-800/60 text-slate-300 hover:bg-ink-800 border border-line;
+    @apply btn bg-ink-900 text-slate-600 hover:bg-ink-850 hover:text-slate-800 border border-line;
   }
   .btn-danger {
-    @apply btn bg-bad/15 text-bad hover:bg-bad/25 border border-bad/20;
+    @apply btn bg-bad/5 text-bad hover:bg-bad/10 border border-bad/15;
   }
   .input {
     @apply w-full rounded-xl bg-ink-850 border border-line px-3 py-2 text-sm
-           text-slate-200 placeholder:text-muted
+           text-slate-800 placeholder:text-muted
            focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30;
   }
   .label {
@@ -49,5 +49,31 @@
   }
   .chip {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  /* Sidebar navigation (console style) */
+  .nav-group {
+    @apply px-3 pt-5 pb-1.5 text-[11px] font-semibold tracking-widest text-muted uppercase;
+  }
+  .nav-item {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium
+           text-slate-500 transition-colors hover:bg-ink-850 hover:text-slate-800;
+  }
+  .nav-item-active {
+    @apply bg-accent-soft text-accent font-semibold hover:bg-accent-soft hover:text-accent;
+  }
+
+  /* Pill tabs (soft blue when active, like the reference console) */
+  .tab-pill {
+    @apply inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium
+           text-slate-500 transition-colors hover:bg-ink-850 hover:text-slate-800;
+  }
+  .tab-pill-active {
+    @apply bg-brand-soft text-brand hover:bg-brand-soft hover:text-brand;
+  }
+
+  /* Pastel circular icon for stat rows */
+  .stat-icon {
+    @apply w-10 h-10 rounded-full flex items-center justify-center shrink-0;
   }
 }
