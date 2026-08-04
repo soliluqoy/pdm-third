@@ -39,7 +39,9 @@ DEFAULT_CAR = {
     "vin": "JTDBR32E720012345",
     "mass_kg": 1450,
     "oil_capacity_l": 4.4,
+    # Tiny pad budget + hybrid regen — accelerated wear for a one-shift demo
     "brake_pad_capacity_mj": 2.5,
+    "regen_fraction": 0.4,
     "last_oil_change_odo": 40000,
     "last_brake_service_odo": 47000,
 }

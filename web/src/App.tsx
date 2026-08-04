@@ -5,6 +5,7 @@ import AlertsPage from "./pages/AlertsPage";
 import DrivingPage from "./pages/DrivingPage";
 import MaintenancePage from "./pages/MaintenancePage";
 import OverviewPage from "./pages/OverviewPage";
+import PredictivePage from "./pages/PredictivePage";
 import SettingsPage from "./pages/SettingsPage";
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/cars/:id" element={<CarPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/maintenance" element={<MaintenancePage />} />
+        <Route path="/predictive" element={<PredictivePage />} />
         <Route path="/driving" element={<DrivingPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

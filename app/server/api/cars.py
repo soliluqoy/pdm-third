@@ -47,6 +47,7 @@ def _car_dict(v: Vehicle) -> dict:
         "mass_kg": v.mass_kg,
         "oil_capacity_l": v.oil_capacity_l,
         "brake_pad_capacity_mj": v.brake_pad_capacity_mj,
+        "regen_fraction": v.regen_fraction,
         "last_oil_change_at": v.last_oil_change_at.isoformat() if v.last_oil_change_at else None,
         "last_oil_change_odo": v.last_oil_change_odo,
         "last_brake_service_at": v.last_brake_service_at.isoformat() if v.last_brake_service_at else None,

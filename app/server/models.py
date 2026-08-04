@@ -120,8 +120,9 @@ class Vehicle(Base):
 
     # Physics / service anchors for the predictive maintenance engine
     mass_kg = Column(Float)                         # brake kinetic energy; default 1500 if null
-    oil_capacity_l = Column(Float)                  # optional; default 5.0
-    brake_pad_capacity_mj = Column(Float)           # energy budget; settings default if null
+    oil_capacity_l = Column(Float)                  # unused by oil scorer (schedule+stress only)
+    brake_pad_capacity_mj = Column(Float)           # friction energy budget; settings default if null
+    regen_fraction = Column(Float)                  # hybrid share of ΔKE not on pads; else settings
     last_oil_change_at = Column(DateTime(timezone=True))
     last_oil_change_odo = Column(Float)
     last_brake_service_at = Column(DateTime(timezone=True))
@@ -265,7 +266,34 @@ class MaintenanceLog(Base):
     notes = Column(Text)
     cost = Column(Numeric(10, 2))
     odometer = Column(Float)
+    # Predictive-maintenance ground truth: was this a preventive repair (done
+    # before failure) or a reactive one (the component actually failed)?
+    # NULL = unknown/not classified; "preventive" | "reactive".
+    failure_class = Column(String(20), nullable=True, index=True)
     event_date = Column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
+class FailureEvent(Base):
+    """A component actually failed (breakdown, no-start, replacement due to
+    failure). This is the ground-truth label for training failure-prediction
+    models. Right-censored vehicles (those that haven't failed) are implicit —
+    every vehicle without a FailureEvent is a 'survived' sample."""
+    __tablename__ = "failure_events"
+
+    id = Column(Integer, primary_key=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    work_order_id = Column(Integer, ForeignKey("work_orders.id", ondelete="SET NULL"),
+                           nullable=True)
+    component = Column(String(20), nullable=False)   # battery | brakes | oil | cooling | engine | other
+    symptom = Column(String(200))
+    odometer = Column(Float)
+    engine_hours = Column(Float)
+    occurred_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+    __table_args__ = (
+        Index("ix_failure_vehicle_time", "vehicle_id", "occurred_at"),
+    )
 
 
 class DtcEvent(Base):
@@ -392,7 +420,9 @@ class SensorBaseline(Base):
 
 
 class ComponentHealth(Base):
-    """Latest predictive scores / RUL per vehicle (upserted by predictor)."""
+    """Latest PME health scores per vehicle (upserted by predictor).
+    Scores are 0–100 higher=healthier. battery_rul_days is an advisory
+    window from score buckets — not electrochemical RUL."""
     __tablename__ = "component_health"
 
     vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"),
@@ -400,7 +430,7 @@ class ComponentHealth(Base):
     battery_score = Column(Float)
     brake_score = Column(Float)
     oil_score = Column(Float)
-    battery_rul_days = Column(Integer)
+    battery_rul_days = Column(Integer)  # advisory days only
     brake_remaining_km = Column(Integer)
     oil_remaining_km = Column(Integer)
     brake_energy_mj_total = Column(Float, nullable=False, default=0.0)
@@ -424,6 +454,58 @@ class ComponentWearEvent(Base):
 
     __table_args__ = (
         Index("ix_wear_vehicle_component_ts", "vehicle_id", "component", "ts"),
+    )
+
+
+class VehicleFeature(Base):
+    """Per-vehicle, per-day feature vector for the failure-prediction models.
+    Computed by services/features.py from telemetry aggregates, trips, driving
+    events, and baselines. This is the model input — one row per (vehicle, day)."""
+    __tablename__ = "vehicle_features"
+
+    id = Column(Integer, primary_key=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    # Usage
+    odometer = Column(Float)
+    engine_hours = Column(Float)
+    distance_km = Column(Float)
+    trip_count = Column(Integer)
+    duration_seconds = Column(Integer)
+    # Battery
+    battery_mean_v = Column(Float)
+    battery_min_v = Column(Float)
+    battery_std_v = Column(Float)
+    battery_trend_v_per_day = Column(Float)
+    # Cooling
+    coolant_mean_c = Column(Float)
+    coolant_p95_c = Column(Float)
+    coolant_max_c = Column(Float)
+    coolant_trend_c_per_day = Column(Float)
+    # Oil
+    oil_temp_mean_c = Column(Float)
+    oil_temp_max_c = Column(Float)
+    thermal_minutes = Column(Float)
+    # Engine
+    rpm_mean = Column(Float)
+    rpm_max = Column(Float)
+    high_rpm_minutes = Column(Float)
+    # Driving behavior
+    harsh_events = Column(Integer)
+    idle_ratio = Column(Float)
+    # Degradation (drift from 30-day baseline, z-score of recent mean)
+    battery_z = Column(Float)
+    coolant_z = Column(Float)
+    oil_temp_z = Column(Float)
+    # Failure label (filled later by the evaluation job; NULL = not yet known)
+    failed = Column(Boolean, nullable=True)
+    failure_component = Column(String(20))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("vehicle_id", "date", name="uq_vehicle_features_vehicle_date"),
+        Index("ix_vehicle_features_vehicle_date", "vehicle_id", "date"),
     )
 
 

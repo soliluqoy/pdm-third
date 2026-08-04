@@ -1,7 +1,7 @@
 // PREDICT — app shell: console-style collapsible sidebar + slim header
 // (mobile keeps a top bar + bottom tabs)
 import {
-  Activity, Bell, CarFront, Gauge, PanelLeftClose, PanelLeft,
+  Activity, Bell, BrainCircuit, CarFront, Gauge, PanelLeftClose, PanelLeft,
   Settings as SettingsIcon, Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -23,6 +23,7 @@ const FLEET_NAV: NavEntry[] = [
   { to: "/", label: "Home", icon: CarFront, end: true },
   { to: "/alerts", label: "Alerts", icon: Bell },
   { to: "/maintenance", label: "Maintenance", icon: Wrench },
+  { to: "/predictive", label: "Predictive", icon: BrainCircuit },
   { to: "/driving", label: "Driving", icon: Gauge },
 ];
 const SYSTEM_NAV: NavEntry[] = [{ to: "/settings", label: "Settings", icon: SettingsIcon }];
@@ -32,6 +33,7 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/cars/")) return "Car details";
   if (pathname.startsWith("/alerts")) return "Alerts";
   if (pathname.startsWith("/maintenance")) return "Maintenance";
+  if (pathname.startsWith("/predictive")) return "Predictive";
   if (pathname.startsWith("/driving")) return "Driving";
   if (pathname.startsWith("/settings")) return "Settings";
   return "Dashboard";
@@ -216,7 +218,7 @@ export default function Layout() {
 
         {/* ── Mobile bottom tabs ──────────────────────────────────────── */}
         <nav className="sm:hidden fixed bottom-0 inset-x-0 z-20 border-t border-line bg-ink-900/95 backdrop-blur">
-          <div className="grid grid-cols-5">
+          <div className="grid grid-cols-6">
             {MOBILE_NAV.map(({ to, label, icon: Icon, end }) => (
               <NavLink
                 key={to}

@@ -130,10 +130,18 @@ _VEHICLE_COLUMN_MIGRATIONS = """
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS mass_kg DOUBLE PRECISION;
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS oil_capacity_l DOUBLE PRECISION;
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS brake_pad_capacity_mj DOUBLE PRECISION;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS regen_fraction DOUBLE PRECISION;
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_oil_change_at TIMESTAMPTZ;
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_oil_change_odo DOUBLE PRECISION;
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_brake_service_at TIMESTAMPTZ;
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_brake_service_odo DOUBLE PRECISION;
+"""
+
+# Idempotent column adds for the predictive-maintenance feedback loop.
+_MAINTENANCE_COLUMN_MIGRATIONS = """
+ALTER TABLE maintenance_log ADD COLUMN IF NOT EXISTS failure_class VARCHAR(20);
+CREATE INDEX IF NOT EXISTS ix_maintenance_log_failure_class
+    ON maintenance_log (failure_class);
 """
 
 
@@ -143,6 +151,8 @@ async def init_db() -> None:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
         await conn.run_sync(Base.metadata.create_all)
         for statement in _split_sql(_VEHICLE_COLUMN_MIGRATIONS):
+            await conn.execute(text(statement))
+        for statement in _split_sql(_MAINTENANCE_COLUMN_MIGRATIONS):
             await conn.execute(text(statement))
         script = _TIMESCALE_SQL.format(
             compress_days=settings.COMPRESS_AFTER_DAYS,

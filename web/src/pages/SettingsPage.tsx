@@ -47,10 +47,17 @@ export default function SettingsPage() {
         </h2>
         <p className="text-xs text-muted mb-3">
           PREDICT watches these for you. Tune the limits — nothing else to configure.
+          Component-health rules fire below a health score; ML anomaly rules fire
+          above an anomaly score (opposite polarity).
         </p>
         <div className="space-y-2">
           {rules
-            ?.filter((r) => r.rule_type !== "anomaly" || r.key.startsWith("predict_"))
+            ?.filter(
+              (r) =>
+                r.rule_type !== "anomaly"
+                || r.key.startsWith("predict_")
+                || r.key.startsWith("ml_anomaly_"),
+            )
             .map((r) => (
               <RuleRow key={r.id} rule={r} />
             ))}
@@ -474,7 +481,12 @@ function RuleRow({ rule }: { rule: Rule }) {
       )}
       {isPredict && rule.threshold_value != null && (
         <div className="text-xs text-muted shrink-0 tabular-nums">
-          fires &lt; {rule.threshold_value} score
+          fires &lt; {rule.threshold_value} health
+        </div>
+      )}
+      {rule.key.startsWith("ml_anomaly_") && rule.threshold_value != null && (
+        <div className="text-xs text-muted shrink-0 tabular-nums">
+          fires ≥ {rule.threshold_value} anomaly
         </div>
       )}
     </div>

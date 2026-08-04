@@ -1,10 +1,12 @@
 """
 PREDICT — Predictive Maintenance Engine (physics / heuristic models).
 
-Three component scorers (0–100) + RUL / remaining-km:
+Three component health scorers (0–100, higher = healthier) + remaining-km /
+advisory days:
   battery  resting voltage, crank drop, recovery, short-trip drain
-  brakes   cumulative kinetic energy absorbed since last pad service
-  oil      distance + thermal + cold short trips + idle + high load
+           (advisory days are score buckets — not electrochemical RUL)
+  brakes   cumulative friction KE since last pad service (regen subtracted)
+  oil      distance schedule + thermal/cold/idle/load stress (not oil chemistry)
 
 Triggers (never on the per-packet TCP hot path):
   • trip close  → brake energy for that trip + full vehicle refresh
@@ -58,8 +60,11 @@ _pending_trips: set[tuple[int, int]] = set()  # (vehicle_id, trip_id) in flight
 # ── Config helpers ────────────────────────────────────────────────────────────
 async def _cfg() -> dict[str, float]:
     return {
-        "pad_mj": await settings_store.get_float("predict.brake_pad_capacity_mj", 80.0),
+        "pad_mj": await settings_store.get_float("predict.brake_pad_capacity_mj", 800.0),
         "decel_g": await settings_store.get_float("predict.brake_decel_g", 0.25),
+        "light_g": await settings_store.get_float("predict.light_brake_g", 0.10),
+        "light_frac": await settings_store.get_float("predict.light_brake_fraction", 0.25),
+        "regen_frac": await settings_store.get_float("predict.regen_fraction", 0.0),
         "batt_warn_days": await settings_store.get_float("predict.battery_warn_rul_days", 30.0),
         "oil_interval_km": await settings_store.get_float("predict.oil_interval_km", 10000.0),
         "mass_default": await settings_store.get_float("predict.mass_kg_default", 1500.0),
@@ -70,7 +75,8 @@ def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, v))
 
 
-def _rul_days(score: float) -> int:
+def _advisory_days(score: float) -> int:
+    """Non-physical advisory window from health score buckets (not true RUL)."""
     if score >= 80:
         return 90
     if score >= 50:
@@ -80,6 +86,12 @@ def _rul_days(score: float) -> int:
     if score >= 15:
         return 7
     return 3
+
+
+def _regen_fraction(vehicle: Vehicle, cfg: dict[str, float]) -> float:
+    if vehicle.regen_fraction is not None:
+        return max(0.0, min(0.95, float(vehicle.regen_fraction)))
+    return max(0.0, min(0.95, float(cfg["regen_frac"])))
 
 
 # ── Rule ensure ───────────────────────────────────────────────────────────────
@@ -222,13 +234,16 @@ async def _recovery_seconds(
 
 async def score_battery(
     session: AsyncSession, vehicle: Vehicle, cfg: dict[str, float],
-) -> tuple[float, int, dict[str, Any]]:
+) -> tuple[Optional[float], Optional[int], dict[str, Any]]:
     sensor = await _pick_voltage_sensor(session, vehicle.id)
-    drivers: dict[str, Any] = {"sensor": sensor}
+    drivers: dict[str, Any] = {
+        "sensor": sensor,
+        "advisory_note": "Advisory window from health-score buckets; not electrochemical RUL",
+    }
 
     if not sensor:
-        # No voltage data yet — neutral score, no false alarms
-        return 100.0, 90, {**drivers, "reason": "no_voltage_data"}
+        # Unknown — do not invent a healthy score
+        return None, None, {**drivers, "reason": "no_voltage_data", "top_reason": "No voltage data"}
 
     resting = await _resting_voltage(session, vehicle.id, sensor)
     drops = await _crank_drops(session, vehicle.id, sensor, days=14)
@@ -252,6 +267,16 @@ async def score_battery(
         if (t.duration_seconds or 0) < 600
     )
     short_ratio = (short / len(trips)) if trips else 0.0
+
+    # Need at least one voltage-derived signal to score
+    if resting is None and avg_drop is None and recovery is None:
+        return None, None, {
+            **drivers,
+            "reason": "insufficient_voltage_signals",
+            "top_reason": "Insufficient voltage signals",
+            "short_trip_ratio_7d": round(short_ratio, 3),
+            "trips_7d": len(trips),
+        }
 
     score = 100.0
     # Resting voltage penalties
@@ -285,7 +310,7 @@ async def score_battery(
         score -= 5
 
     score = _clamp(score)
-    rul = _rul_days(score)
+    advisory = _advisory_days(score)
     drivers.update({
         "resting_v": round(resting, 3) if resting is not None else None,
         "crank_drop_v": round(avg_drop, 3) if avg_drop is not None else None,
@@ -305,7 +330,7 @@ async def score_battery(
     else:
         drivers["top_reason"] = "Battery within normal range"
 
-    return score, rul, drivers
+    return score, advisory, drivers
 
 
 # ── Brake model ───────────────────────────────────────────────────────────────
@@ -315,11 +340,20 @@ async def accumulate_brake_energy_for_trip(
     trip: Trip,
     cfg: dict[str, float],
 ) -> float:
-    """Sum kinetic energy (MJ) dissipated in braking events during the trip."""
+    """Sum friction-pad kinetic energy (MJ) during the trip.
+
+    Counts full ΔKE for hard decelerations (≥ brake_decel_g) and a fraction
+    for light braking. Hybrid regen_fraction is subtracted so only pad share
+    accumulates toward the pad capacity budget.
+    """
     if not trip.start_ts or not trip.end_ts:
         return 0.0
     mass = vehicle.mass_kg or cfg["mass_default"]
-    decel_ms2 = cfg["decel_g"] * G
+    hard_ms2 = cfg["decel_g"] * G
+    light_ms2 = cfg["light_g"] * G
+    light_frac = max(0.0, min(1.0, cfg["light_frac"]))
+    regen = _regen_fraction(vehicle, cfg)
+    pad_share = 1.0 - regen
 
     rows = (await session.execute(text("""
         SELECT timestamp, speed FROM sensor_readings
@@ -332,7 +366,8 @@ async def accumulate_brake_energy_for_trip(
     })).all()
 
     energy_j = 0.0
-    events = 0
+    hard_events = 0
+    light_events = 0
     prev_ts: Optional[datetime] = None
     prev_v: Optional[float] = None  # m/s
 
@@ -344,9 +379,13 @@ async def accumulate_brake_energy_for_trip(
             dt = (ts - prev_ts).total_seconds()
             if 0.5 <= dt <= 30 and prev_v > v:
                 decel = (prev_v - v) / dt
-                if decel >= decel_ms2:
-                    energy_j += 0.5 * mass * (prev_v * prev_v - v * v)
-                    events += 1
+                dke = 0.5 * mass * (prev_v * prev_v - v * v)
+                if decel >= hard_ms2:
+                    energy_j += dke
+                    hard_events += 1
+                elif decel >= light_ms2:
+                    energy_j += dke * light_frac
+                    light_events += 1
         prev_ts, prev_v = ts, v
 
     # Also count device harsh_brake events with a floor energy if no speed series
@@ -357,13 +396,13 @@ async def accumulate_brake_energy_for_trip(
             DrivingEvent.event_type == DrivingEventType.HARSH_BRAKE,
         )
     )).scalars().all()
-    if events == 0 and harsh:
+    if hard_events == 0 and light_events == 0 and harsh:
         # Fallback: approximate each harsh event as a 50→20 km/h stop
         v_i, v_f = 50 * KMH_TO_MS, 20 * KMH_TO_MS
         energy_j += len(harsh) * 0.5 * mass * (v_i * v_i - v_f * v_f)
-        events = len(harsh)
+        hard_events = len(harsh)
 
-    energy_mj = energy_j / 1e6
+    energy_mj = (energy_j * pad_share) / 1e6
     if energy_mj <= 0:
         return 0.0
 
@@ -377,7 +416,10 @@ async def accumulate_brake_energy_for_trip(
         delta_score=None,
         metric={
             "energy_mj": round(energy_mj, 4),
-            "events": events,
+            "hard_events": hard_events,
+            "light_events": light_events,
+            "events": hard_events + light_events,
+            "regen_fraction": round(regen, 3),
             "distance_km": trip.distance_km,
         },
         ts=trip.end_ts or datetime.now(timezone.utc),
@@ -393,6 +435,7 @@ async def score_brakes(
     pad_mj = vehicle.brake_pad_capacity_mj or cfg["pad_mj"]
     total = float(health.brake_energy_mj_total or 0.0)
     score = _clamp(100.0 * (1.0 - total / max(pad_mj, 1e-6)))
+    regen = _regen_fraction(vehicle, cfg)
 
     since = datetime.now(timezone.utc) - timedelta(days=7)
     trips = list((await session.execute(
@@ -432,6 +475,7 @@ async def score_brakes(
         "energy_mj_total": round(total, 3),
         "energy_mj_7d": round(energy_7d, 3),
         "pad_capacity_mj": pad_mj,
+        "regen_fraction": round(regen, 3),
         "harsh_brake_7d": len(harsh_7d),
         "distance_km_7d": round(dist_7d, 1),
         "top_reason": (
@@ -443,11 +487,14 @@ async def score_brakes(
     return score, remaining_km, drivers
 
 
-# ── Oil model ─────────────────────────────────────────────────────────────────
+# ── Oil model (schedule + stress heuristics — not oil chemistry) ──────────────
 async def score_oil(
     session: AsyncSession, vehicle: Vehicle, cfg: dict[str, float],
 ) -> tuple[float, Optional[int], dict[str, Any]]:
+    """Distance-based service window plus thermal/cold/idle/load stress penalties.
+    Not a viscosity/TAN/chemistry model; oil_capacity_l is unused."""
     interval = cfg["oil_interval_km"]
+    sample_period = max(0.5, float(settings.TELEMETRY_SAMPLE_SECONDS))
     # Current odometer
     odo_row = (await session.execute(text("""
         SELECT value FROM sensor_readings
@@ -475,7 +522,7 @@ async def score_oil(
 
     since = datetime.now(timezone.utc) - timedelta(days=7)
 
-    # Thermal minutes: oil or coolant > 110°C from 1m aggregate when available
+    # Thermal minutes: prefer 1m aggregates; raw fallback uses configured sample period
     thermal_min = 0.0
     for st in ("engine_oil_temperature", "coolant_temperature"):
         try:
@@ -491,12 +538,12 @@ async def score_oil(
                 thermal_min = max(thermal_min, float(row[0]))
         except Exception:
             row = (await session.execute(text("""
-                SELECT count(*)::float / 6.0 AS minutes
+                SELECT count(*)::float * :period / 60.0 AS minutes
                 FROM sensor_readings
                 WHERE vehicle_id = :vid AND sensor_type = :st
                   AND timestamp >= now() - interval '7 days'
                   AND value > 110
-            """), {"vid": vehicle.id, "st": st})).first()
+            """), {"vid": vehicle.id, "st": st, "period": sample_period})).first()
             if row and row[0]:
                 thermal_min = max(thermal_min, float(row[0]))
 
@@ -582,6 +629,7 @@ async def score_oil(
         "thermal_minutes_7d": round(thermal_min, 1),
         "idle_ratio_7d": round(idle_ratio, 3),
         "load_penalty": round(load_pen, 2),
+        "model": "schedule_plus_stress",
         "top_reason": (
             "Oil change due by distance" if distance_pct > 0.7
             else "Frequent short cold trips" if cold_short >= 5
@@ -598,10 +646,10 @@ async def _get_or_create_health(session: AsyncSession, vehicle_id: int) -> Compo
     if row is None:
         row = ComponentHealth(
             vehicle_id=vehicle_id,
-            battery_score=100.0,
-            brake_score=100.0,
-            oil_score=100.0,
-            battery_rul_days=90,
+            battery_score=None,
+            brake_score=None,
+            oil_score=None,
+            battery_rul_days=None,
             brake_energy_mj_total=0.0,
             drivers={},
         )
@@ -657,7 +705,7 @@ async def update_vehicle(
         if trip and trip.vehicle_id == vehicle_id:
             await accumulate_brake_energy_for_trip(session, vehicle, trip, cfg)
 
-    batt_score, batt_rul, batt_drv = await score_battery(session, vehicle, cfg)
+    batt_score, batt_advisory, batt_drv = await score_battery(session, vehicle, cfg)
     brake_score, brake_km, brake_drv = await score_brakes(session, vehicle, cfg)
     oil_score, oil_km, oil_drv = await score_oil(session, vehicle, cfg)
 
@@ -666,10 +714,10 @@ async def update_vehicle(
     prev_brake = health.brake_score
     prev_oil = health.oil_score
 
-    health.battery_score = round(batt_score, 1)
+    health.battery_score = round(batt_score, 1) if batt_score is not None else None
     health.brake_score = round(brake_score, 1)
     health.oil_score = round(oil_score, 1)
-    health.battery_rul_days = batt_rul
+    health.battery_rul_days = batt_advisory  # advisory window, not physical RUL
     health.brake_remaining_km = brake_km
     health.oil_remaining_km = oil_km
     health.drivers = {
@@ -686,13 +734,15 @@ async def update_vehicle(
         ("brakes", prev_brake, brake_score, brake_drv),
         ("oil", prev_oil, oil_score, oil_drv),
     ):
+        if cur is None:
+            continue
         if prev is None or abs(float(prev) - cur) >= 0.5:
             session.add(ComponentWearEvent(
                 vehicle_id=vehicle_id,
                 component=comp,
                 trip_id=trip_id,
                 event_kind="score",
-                delta_score=round(cur - float(prev or 100), 2),
+                delta_score=round(cur - float(prev), 2) if prev is not None else None,
                 metric=metric,
                 ts=now,
             ))
@@ -701,23 +751,26 @@ async def update_vehicle(
 
     # Fire predictive rules (fire_rule commits — call after flush)
     warn_days = int(cfg["batt_warn_days"])
-    if batt_score < 40 or batt_rul < warn_days:
+    if batt_score is not None and (
+        batt_score < 40
+        or (batt_advisory is not None and batt_advisory < warn_days)
+    ):
         await _maybe_fire(
             session, vehicle,
             key="predict_battery",
             name="Battery failure likely soon",
             recommendation=(
-                f"Test / replace battery — estimated RUL {batt_rul} days. "
-                f"{batt_drv.get('top_reason', '')}."
+                f"Test / replace battery — advisory window ~{batt_advisory} days "
+                f"(heuristic, not measured RUL). {batt_drv.get('top_reason', '')}."
             ),
             score=batt_score,
             threshold=40.0,
             severity=Severity.CRITICAL if batt_score < 25 else Severity.WARNING,
             extra_msg=(
-                f"Battery score {batt_score:.0f}/100 · RUL ≈ {batt_rul} days. "
+                f"Battery health {batt_score:.0f}/100 · advisory ~{batt_advisory} days. "
                 f"{batt_drv.get('top_reason', '')}."
             ),
-            force=batt_rul < warn_days,
+            force=batt_advisory is not None and batt_advisory < warn_days,
         )
     if brake_score < 25:
         km_txt = f"~{brake_km} km left" if brake_km is not None else "inspect soon"
@@ -730,7 +783,7 @@ async def update_vehicle(
             threshold=25.0,
             severity=Severity.WARNING,
             extra_msg=(
-                f"Brake score {brake_score:.0f}/100 · {km_txt}. "
+                f"Brake health {brake_score:.0f}/100 · {km_txt}. "
                 f"{brake_drv.get('top_reason', '')}."
             ),
         )
@@ -745,16 +798,18 @@ async def update_vehicle(
             threshold=30.0,
             severity=Severity.WARNING,
             extra_msg=(
-                f"Oil score {oil_score:.0f}/100 · {km_txt}. "
+                f"Oil health {oil_score:.0f}/100 · {km_txt}. "
                 f"{oil_drv.get('top_reason', '')}."
             ),
         )
 
-    # Fold prognostics into fleet RAG
+    # Fold prognostics into fleet RAG (skip unknown battery)
     await recompute_and_broadcast(
         session, vehicle_id, reason="prognostics",
         prognostics={
-            "battery": batt_score, "brakes": brake_score, "oil": oil_score,
+            k: v for k, v in {
+                "battery": batt_score, "brakes": brake_score, "oil": oil_score,
+            }.items() if v is not None
         },
     )
     return health
@@ -789,7 +844,7 @@ async def reset_component(
             vehicle.last_oil_change_odo = odometer
     elif component == "battery":
         health.battery_score = 100.0
-        health.battery_rul_days = 90
+        health.battery_rul_days = 90  # advisory after service reset
     else:
         return
 

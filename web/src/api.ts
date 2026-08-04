@@ -1,8 +1,8 @@
 // PREDICT v3 — REST client (thin fetch wrapper) + shared query keys
 import type {
   Alert, AppSettings, Car, DrivingCalendar, DrivingSummary, History,
-  MaintenanceEntry, OverviewCar, Prognostics, Rule, Summary, TimelineEvent, Trip,
-  DrivingEvent, Vitals, WorkOrder,
+  MaintenanceEntry, ModelStatus, ModelEvaluation, OverviewCar, Prognostics,
+  Rule, Summary, TimelineEvent, Trip, DrivingEvent, Vitals, WorkOrder,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -90,8 +90,10 @@ export const api = {
   createWorkOrder: (body: unknown) => post<WorkOrder>("/workorders", body),
   approveWorkOrder: (id: number) => post<WorkOrder>(`/workorders/${id}/approve`),
   startWorkOrder: (id: number) => post<WorkOrder>(`/workorders/${id}/start`),
-  completeWorkOrder: (id: number, body: { notes?: string; cost?: number; odometer?: number }) =>
-    post<WorkOrder>(`/workorders/${id}/complete`, body),
+  completeWorkOrder: (id: number, body: {
+    notes?: string; cost?: number; odometer?: number;
+    failure_class?: string; failure_component?: string; failure_symptom?: string;
+  }) => post<WorkOrder>(`/workorders/${id}/complete`, body),
   cancelWorkOrder: (id: number) => post<WorkOrder>(`/workorders/${id}/cancel`),
 
   // maintenance history
@@ -117,6 +119,12 @@ export const api = {
   // rules (toggle + threshold only)
   rules: () => request<Rule[]>("/rules"),
   patchRule: (id: number, body: unknown) => patch<Rule>(`/rules/${id}`, body),
+
+  // predictive models (ML)
+  modelStatus: () => request<ModelStatus>("/models/status"),
+  modelEvaluation: () => request<ModelEvaluation>("/models/evaluate"),
+  vehicleModelScores: (id: number) =>
+    request<{ vehicle_id: number; scores: Record<string, number> }>(`/models/vehicles/${id}`),
 
   // settings
   settings: () => request<AppSettings>("/settings"),

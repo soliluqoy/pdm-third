@@ -13,7 +13,7 @@ Simulates a **Toyota Corolla Hybrid taxi** in Kuala Lumpur with a wired
 | Behavior | Harsh brakes (≥8/day), accel/corner, speeding, high RPM, idling (mamak) |
 | Scheduled | Odometer 10 000 km + engine-hours interval |
 | Fuel | Monotonic `fuel_consumed` (L) → trip L/100 km; mid-shift Petronas **refuel** |
-| Predictive (PME) | Brake energy, weak battery / short trips, oil stress |
+| Predictive (PME) | Brake energy (tiny 2.5 MJ pad budget + 0.4 regen for demo), weak battery / short trips, oil stress |
 | Work orders | SUGGESTED drafts (`ask_me_first=true`) |
 
 ## Prerequisites

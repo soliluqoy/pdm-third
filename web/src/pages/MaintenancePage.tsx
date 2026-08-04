@@ -120,7 +120,15 @@ export default function MaintenancePage() {
                     <Wrench size={14} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-slate-700">{h.title}</div>
+                    <div className="text-sm text-slate-700">
+                      {h.title}
+                      {h.failure_class === "reactive" && (
+                        <span className="chip bg-bad/10 text-bad ml-2">failed</span>
+                      )}
+                      {h.failure_class === "preventive" && (
+                        <span className="chip bg-ok/10 text-ok ml-2">preventive</span>
+                      )}
+                    </div>
                     {h.notes && <div className="text-xs text-muted truncate">{h.notes}</div>}
                   </div>
                   <div className="text-xs text-muted shrink-0 text-right">
@@ -155,6 +163,9 @@ function WorkOrderCard({ wo }: { wo: WorkOrder }) {
   const [notes, setNotes] = useState("");
   const [cost, setCost] = useState("");
   const [odometer, setOdometer] = useState("");
+  const [failureClass, setFailureClass] = useState<"preventive" | "reactive" | "">("");
+  const [failureComponent, setFailureComponent] = useState("other");
+  const [failureSymptom, setFailureSymptom] = useState("");
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["workorders"] });
@@ -172,11 +183,15 @@ function WorkOrderCard({ wo }: { wo: WorkOrder }) {
         notes: notes || undefined,
         cost: cost ? Number(cost) : undefined,
         odometer: odometer ? Number(odometer) : undefined,
+        failure_class: failureClass || undefined,
+        failure_component: failureClass === "reactive" ? failureComponent : undefined,
+        failure_symptom: failureClass === "reactive" ? failureSymptom || undefined : undefined,
       }),
     onSuccess: () => {
       invalidate();
       setCompleteOpen(false);
       setNotes(""); setCost(""); setOdometer("");
+      setFailureClass(""); setFailureComponent("other"); setFailureSymptom("");
     },
   });
 
@@ -282,6 +297,67 @@ function WorkOrderCard({ wo }: { wo: WorkOrder }) {
             />
           </div>
         </div>
+
+        {/* Failure classification — the ground truth for predictive maintenance */}
+        <div className="mt-4">
+          <label className="label">What happened?
+            <span className="text-muted font-normal">
+              {" "}— helps PREDICT learn what failure actually looks like
+            </span>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setFailureClass("preventive")}
+              className={`card p-3 text-left transition-colors ${
+                failureClass === "preventive" ? "!border-ok/60 bg-ok/5" : ""
+              }`}
+            >
+              <div className="text-sm font-semibold text-slate-800">Fixed before failure</div>
+              <div className="text-xs text-muted">Preventive repair — caught it in time</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFailureClass("reactive")}
+              className={`card p-3 text-left transition-colors ${
+                failureClass === "reactive" ? "!border-bad/60 bg-bad/5" : ""
+              }`}
+            >
+              <div className="text-sm font-semibold text-slate-800">Component failed</div>
+              <div className="text-xs text-muted">Reactive — it broke and had to be replaced</div>
+            </button>
+          </div>
+        </div>
+
+        {failureClass === "reactive" && (
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div>
+              <label className="label">Failed component</label>
+              <select
+                className="input"
+                value={failureComponent}
+                onChange={(e) => setFailureComponent(e.target.value)}
+              >
+                <option value="battery">Battery</option>
+                <option value="brakes">Brakes</option>
+                <option value="oil">Oil system</option>
+                <option value="cooling">Cooling system</option>
+                <option value="engine">Engine</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Symptom (optional)</label>
+              <input
+                className="input"
+                value={failureSymptom}
+                onChange={(e) => setFailureSymptom(e.target.value)}
+                placeholder="e.g. wouldn't start, smoke"
+              />
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-end gap-2 mt-4">
           <button className="btn-ghost" onClick={() => setCompleteOpen(false)}>Cancel</button>
           <button

@@ -1,4 +1,5 @@
-// Numeric 0–100 component health ring (battery / brakes / oil)
+// Numeric 0–100 component health ring (battery / brakes / oil).
+// Higher = healthier. Do not reuse for ML anomaly scores (higher = worse).
 
 function scoreColor(score: number | null | undefined): string {
   if (score === null || score === undefined) return "#94A3B8";

@@ -250,7 +250,10 @@ function CarCard({ car }: { car: OverviewCar }) {
             {car.live?.ignition && <span className="chip bg-ok/10 text-ok">Driving</span>}
           </div>
           {car.prognostics && (
-            <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] tabular-nums">
+            <div
+              className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] tabular-nums"
+              title="Component health (higher = healthier)"
+            >
               <span className={scoreTint(car.prognostics.battery)}>
                 Bat {car.prognostics.battery != null ? Math.round(car.prognostics.battery) : "—"}
               </span>

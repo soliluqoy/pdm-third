@@ -65,7 +65,8 @@ Unregistered IMEIs are logged and dropped on purpose — check
 | **Home** | Cars at a glance — health ring, key vitals, active alerts, open to-dos |
 | **Alerts** | Active alerts (resolve/dismiss) + **full alert history** |
 | **Maintenance** | Work-order board (Suggested → Open → In progress) + **maintenance history** + CSV export |
-| **Car** (tap a card) | Live vitals by system, history charts (6 h → 1 y), full timeline |
+| **Car** (tap a card) | Live vitals by system, **component health** (higher = healthier), history charts, timeline |
+| **Predictive** | Fleet **anomaly** scores from Isolation Forest (higher = worse) — not the same as Car health |
 | **Driving** | Daily score, trips, notable moments |
 | **Settings** | Cars + SMS setup, warning limits (sliders, no rule builder), preferences |
 
@@ -117,6 +118,17 @@ Rule types: **threshold** (sensor vs limit), **DTC** (fault-code match),
 **scheduled** (km / engine-hours / days interval), **behavior** (daily driving
 event counts), **anomaly** (deviation from the car's own 30-day baseline).
 
+### Predictive scores (two systems)
+
+Do not treat these as interchangeable:
+
+| System | Where | Polarity | What it is |
+|--------|-------|----------|------------|
+| **PME** (component health) | Car page, Home chips | **Higher = healthier** (0–100) | Heuristic / simplified physics for battery, brakes, oil. Battery “advisory days” are score buckets, not electrochemical RUL. |
+| **ML anomaly** | Predictive page | **Higher = more anomalous** (0–100) | Isolation Forest vs fleet daily features. Statistical only — no physical unit or failure countdown. |
+
+PME also folds low health into the fleet RAG color. Completing a reactive work order labels a `FailureEvent` for ML evaluation.
+
 ## Configuration
 
 Everything is optional — the defaults in `.env.example` work out of the box.
@@ -134,6 +146,8 @@ Everything is optional — the defaults in `.env.example` work out of the box.
 | `COMPRESS_AFTER_DAYS` | `7` | TimescaleDB compresses chunks older than this |
 | `WATCHDOG_INTERVAL_SECONDS` | `60` | Offline-watchdog cadence |
 | `BASELINES_INTERVAL_SECONDS` | `21600` (6 h) | Baseline/anomaly job cadence |
+| `PREDICTOR_INTERVAL_SECONDS` | `3600` | PME + ML model job cadence |
+| `TELEMETRY_SAMPLE_SECONDS` | `10` | Assumed sample period when converting reading counts → minutes |
 | `CORS_ORIGINS` | `http://localhost:5173,…` | Allowed origins for the Vite dev server |
 
 ## Develop

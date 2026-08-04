@@ -23,6 +23,7 @@ logs/
 # ── Simulation ────────────────────────────────────────────────────────────────
 simulation/.kl_grind_checkpoint.json
 simulation/kl_grind.log
+simulation/sim_test_summary.json
 
 # ── IDE / OS ──────────────────────────────────────────────────────────────────
 .vscode/

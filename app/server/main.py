@@ -23,7 +23,7 @@ from server.config import settings
 from server.db import async_session_factory
 from server.ingest import handle_records, registry
 from server.init_db import init_db
-from server.services import baselines, predictor, watchdog
+from server.services import baselines, features, models, predictor, watchdog
 from server.teltonika.server import TeltonikaListener
 from server.ws import hub
 
@@ -55,6 +55,8 @@ async def lifespan(app: FastAPI):
     await listener.start()
     watchdog.start()
     baselines.start()
+    features.start()
+    models.start()
     predictor.start()
     logger.info("PREDICT %s up — dashboard :8000, trackers :%d",
                 settings.APP_VERSION, settings.TELTONIKA_PORT)
@@ -64,6 +66,8 @@ async def lifespan(app: FastAPI):
         await listener.stop()
         await watchdog.stop()
         await baselines.stop()
+        await features.stop()
+        await models.stop()
         await predictor.stop()
 
 

@@ -58,7 +58,7 @@ class PredictApi:
                 k: payload[k]
                 for k in (
                     "name", "device_type", "license_plate", "make", "model", "year", "vin",
-                    "mass_kg", "oil_capacity_l", "brake_pad_capacity_mj",
+                    "mass_kg", "oil_capacity_l", "brake_pad_capacity_mj", "regen_fraction",
                     "last_oil_change_odo", "last_brake_service_odo",
                 )
                 if k in payload and payload[k] is not None

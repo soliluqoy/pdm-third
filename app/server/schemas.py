@@ -20,7 +20,8 @@ class CarCreate(BaseModel):
     vin: Optional[str] = None
     mass_kg: Optional[float] = Field(default=None, ge=500, le=50000)
     oil_capacity_l: Optional[float] = Field(default=None, ge=1, le=50)
-    brake_pad_capacity_mj: Optional[float] = Field(default=None, ge=1, le=1000)
+    brake_pad_capacity_mj: Optional[float] = Field(default=None, ge=1, le=10000)
+    regen_fraction: Optional[float] = Field(default=None, ge=0, le=0.95)
     last_oil_change_odo: Optional[float] = Field(default=None, ge=0)
     last_brake_service_odo: Optional[float] = Field(default=None, ge=0)
 
@@ -36,7 +37,8 @@ class CarUpdate(BaseModel):
     vin: Optional[str] = None
     mass_kg: Optional[float] = Field(default=None, ge=500, le=50000)
     oil_capacity_l: Optional[float] = Field(default=None, ge=1, le=50)
-    brake_pad_capacity_mj: Optional[float] = Field(default=None, ge=1, le=1000)
+    brake_pad_capacity_mj: Optional[float] = Field(default=None, ge=1, le=10000)
+    regen_fraction: Optional[float] = Field(default=None, ge=0, le=0.95)
     last_oil_change_odo: Optional[float] = Field(default=None, ge=0)
     last_brake_service_odo: Optional[float] = Field(default=None, ge=0)
 
@@ -54,6 +56,12 @@ class WorkOrderComplete(BaseModel):
     notes: Optional[str] = None
     cost: Optional[float] = Field(default=None, ge=0)
     odometer: Optional[float] = Field(default=None, ge=0)
+    # Predictive-maintenance ground truth. "preventive" = done before failure;
+    # "reactive" = the component actually failed (writes a FailureEvent).
+    failure_class: Optional[str] = Field(default=None, pattern=r"^(preventive|reactive)$")
+    failure_component: Optional[str] = Field(
+        default=None, pattern=r"^(battery|brakes|oil|cooling|engine|other)$")
+    failure_symptom: Optional[str] = Field(default=None, max_length=200)
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────

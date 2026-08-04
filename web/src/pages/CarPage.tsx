@@ -128,18 +128,21 @@ export default function CarPage() {
         </div>
       </div>
 
-      {/* Predictive component health */}
+      {/* PME component health (higher = healthier; not the ML anomaly page) */}
       <section className="card p-4">
-        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide mb-3">
-          Predictive health
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide mb-1">
+          Component health
         </h2>
+        <p className="text-xs text-muted mb-3">
+          Higher = healthier (0–100). Separate from fleet anomaly scores on Predictive.
+        </p>
         {prognostics?.collecting || (
           prognostics?.battery_score == null
           && prognostics?.brake_score == null
           && prognostics?.oil_score == null
         ) ? (
           <p className="text-sm text-muted">
-            Collecting data… scores appear after the first closed trip or hourly prediction run.
+            Collecting data… health scores appear after the first closed trip or hourly prediction run.
           </p>
         ) : (
           <div className="flex flex-wrap justify-around gap-4">
@@ -148,7 +151,7 @@ export default function CarPage() {
               score={prognostics?.battery_score}
               detail={
                 prognostics?.battery_rul_days != null
-                  ? `RUL ~${prognostics.battery_rul_days}d · ${prognostics.drivers?.battery?.top_reason ?? ""}`
+                  ? `Advisory ~${prognostics.battery_rul_days}d · ${prognostics.drivers?.battery?.top_reason ?? ""}`
                   : prognostics?.drivers?.battery?.top_reason
               }
             />

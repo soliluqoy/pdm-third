@@ -128,6 +128,9 @@ async def complete_work_order(wo_id: int, body: WorkOrderComplete,
     t = await wo_service.complete(
         session, wo_id,
         completion_notes=body.notes, cost=body.cost, odometer=body.odometer,
+        failure_class=body.failure_class,
+        failure_component=body.failure_component,
+        failure_symptom=body.failure_symptom,
     )
     if t is None:
         raise HTTPException(409, "Work order is already closed")
@@ -168,6 +171,7 @@ async def maintenance_history(
             "title": m.title, "notes": m.notes,
             "cost": float(m.cost) if m.cost is not None else None,
             "odometer": m.odometer,
+            "failure_class": m.failure_class,
             "event_date": m.event_date.isoformat() if m.event_date else None,
         }
         for m in rows

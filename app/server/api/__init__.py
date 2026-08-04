@@ -1,7 +1,7 @@
 """REST API routers."""
 from fastapi import APIRouter
 
-from server.api import alerts, cars, driving, live, rules, settings_api, workorders
+from server.api import alerts, cars, driving, live, models, rules, settings_api, workorders
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(live.router)        # /overview, /live/fleet, /live/summary
@@ -11,3 +11,4 @@ api_router.include_router(workorders.router)  # /workorders…, /maintenance…
 api_router.include_router(driving.router)     # /driving…
 api_router.include_router(rules.router)       # /rules…
 api_router.include_router(settings_api.router)  # /settings…
+api_router.include_router(models.router)      # /models… (predictive ML)

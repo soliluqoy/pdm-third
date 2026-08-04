@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     BASELINES_INTERVAL_SECONDS: int = 6 * 3600
     # Predictive maintenance engine (battery / brakes / oil) cadence
     PREDICTOR_INTERVAL_SECONDS: int = 3600
+    # Assumed raw sample period when converting reading counts → minutes
+    # (FMC001 SMS setup suggests ~10 s; sim uses 5 s — override via env).
+    TELEMETRY_SAMPLE_SECONDS: float = 10.0
 
     @property
     def cors_origins_list(self) -> List[str]:

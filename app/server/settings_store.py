@@ -30,11 +30,20 @@ DEFAULTS: dict[str, str] = {
         "speeding": 6, "idling": 3, "high_rpm": 4,
     }),
     # Predictive maintenance engine (physics / heuristic models)
-    "predict.brake_pad_capacity_mj": "80",
+    # ~800 MJ ≈ friction budget for ~40k km urban taxi at ~0.02 MJ/km hard-brake energy
+    "predict.brake_pad_capacity_mj": "800",
     "predict.brake_decel_g": "0.25",
+    "predict.light_brake_g": "0.10",
+    "predict.light_brake_fraction": "0.25",
+    "predict.regen_fraction": "0.0",
     "predict.battery_warn_rul_days": "30",
     "predict.oil_interval_km": "10000",
     "predict.mass_kg_default": "1500",
+    # Unsupervised ML anomaly detection (Isolation Forest) thresholds
+    "ml.anomaly_threshold_battery": "80",
+    "ml.anomaly_threshold_cooling": "80",
+    "ml.anomaly_threshold_oil": "80",
+    "ml.anomaly_threshold_engine": "80",
 }
 
 DESCRIPTIONS: dict[str, str] = {
@@ -44,11 +53,18 @@ DESCRIPTIONS: dict[str, str] = {
     "behavior.accel_threshold_ms2": "Harsh accel/brake sensitivity (m/s², lower = more sensitive)",
     "behavior.high_rpm_threshold": "High-RPM threshold",
     "behavior.score_weights": "Driving-score penalty weights per event type (JSON)",
-    "predict.brake_pad_capacity_mj": "Brake pad energy budget (MJ) before 0% life",
-    "predict.brake_decel_g": "Min deceleration (g) counted as a braking wear event",
-    "predict.battery_warn_rul_days": "Fire battery prediction when RUL falls below this",
-    "predict.oil_interval_km": "Baseline oil-change interval (km)",
+    "predict.brake_pad_capacity_mj": "Friction pad energy budget (MJ) before 0% life",
+    "predict.brake_decel_g": "Min deceleration (g) counted as full hard-brake wear",
+    "predict.light_brake_g": "Min deceleration (g) for partial light-brake wear",
+    "predict.light_brake_fraction": "Fraction of ΔKE counted for light braking (0–1)",
+    "predict.regen_fraction": "Default hybrid regen share of ΔKE not attributed to pads (0–1)",
+    "predict.battery_warn_rul_days": "Fire battery alert when advisory window falls below this (days)",
+    "predict.oil_interval_km": "Baseline oil-change interval (km); oil score is schedule+stress, not chemistry",
     "predict.mass_kg_default": "Default vehicle mass (kg) when not set on the car",
+    "ml.anomaly_threshold_battery": "ML anomaly score (0-100, higher=worse) that fires a battery alert",
+    "ml.anomaly_threshold_cooling": "ML anomaly score (0-100, higher=worse) that fires a cooling alert",
+    "ml.anomaly_threshold_oil": "ML anomaly score (0-100, higher=worse) that fires an oil alert",
+    "ml.anomaly_threshold_engine": "ML anomaly score (0-100, higher=worse) that fires an engine alert",
 }
 
 _cache: dict[str, str] = {}

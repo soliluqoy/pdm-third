@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.models import (
     Alert,
     AlertStatus,
+    FailureEvent,
     MaintenanceLog,
     Vehicle,
     WorkOrder,
@@ -109,9 +110,17 @@ async def complete(
     completion_notes: Optional[str] = None,
     cost: Optional[float] = None,
     odometer: Optional[float] = None,
+    failure_class: Optional[str] = None,
+    failure_component: Optional[str] = None,
+    failure_symptom: Optional[str] = None,
 ) -> Optional[WorkOrder]:
     """→ DONE and write the immutable maintenance_log row.
-    Also auto-resolves the linked alert, if any."""
+    Also auto-resolves the linked alert, if any.
+
+    failure_class: "preventive" (done before failure) | "reactive" (the
+    component actually failed). A reactive completion also writes a
+    FailureEvent — the ground-truth label for failure-prediction models.
+    """
     wo = await session.get(WorkOrder, wo_id)
     if wo is None or wo.status in (WorkOrderStatus.DONE, WorkOrderStatus.CANCELLED):
         return None
@@ -131,8 +140,33 @@ async def complete(
         notes=completion_notes or wo.description,
         cost=cost,
         odometer=odometer,
+        failure_class=failure_class,
         event_date=now,
     ))
+
+    # Ground-truth label: a reactive completion means the component failed.
+    if failure_class == "reactive":
+        component = failure_component or "other"
+        session.add(FailureEvent(
+            vehicle_id=wo.vehicle_id,
+            work_order_id=wo.id,
+            component=component,
+            symptom=failure_symptom or completion_notes or wo.title,
+            odometer=odometer,
+            occurred_at=now,
+        ))
+        # Label daily feature rows in the lookback window for ML evaluation.
+        from server.services import models as models_service
+        labeled = await models_service.label_failure_features(
+            session,
+            vehicle_id=wo.vehicle_id,
+            component=component,
+            occurred_at=now,
+        )
+        logger.info(
+            "FailureEvent recorded: vehicle %d component=%s (labeled %d feature rows)",
+            wo.vehicle_id, component, labeled,
+        )
 
     if wo.alert_id:
         alert = await session.get(Alert, wo.alert_id)
@@ -213,11 +247,12 @@ async def maintenance_csv(session: AsyncSession, vehicle_id: Optional[int] = Non
     vehicles = {v.id: v.name for v in (await session.execute(select(Vehicle))).scalars().all()}
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["date", "vehicle", "type", "title", "notes", "cost", "odometer"])
+    w.writerow(["date", "vehicle", "type", "title", "notes", "cost", "odometer", "failure_class"])
     for r in rows:
         w.writerow([
             r.event_date.isoformat(), vehicles.get(r.vehicle_id, r.vehicle_id),
             r.event_type, r.title, (r.notes or "").replace("\n", " "),
             r.cost if r.cost is not None else "", r.odometer if r.odometer is not None else "",
+            r.failure_class or "",
         ])
     return buf.getvalue()

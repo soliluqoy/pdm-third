@@ -97,6 +97,7 @@ export interface Car {
   mass_kg?: number | null;
   oil_capacity_l?: number | null;
   brake_pad_capacity_mj?: number | null;
+  regen_fraction?: number | null;
   last_oil_change_at?: string | null;
   last_oil_change_odo?: number | null;
   last_brake_service_at?: string | null;
@@ -167,6 +168,9 @@ export interface WorkOrder {
   odometer_at_completion: number | null;
 }
 
+export type FailureClass = "preventive" | "reactive" | null;
+export type FailureComponent = "battery" | "brakes" | "oil" | "cooling" | "engine" | "other";
+
 export interface MaintenanceEntry {
   id: number;
   vehicle_id: number;
@@ -177,6 +181,7 @@ export interface MaintenanceEntry {
   notes: string | null;
   cost: number | null;
   odometer: number | null;
+  failure_class: FailureClass;
   event_date: string | null;
 }
 
@@ -295,6 +300,33 @@ export interface Summary {
   work_orders: Record<string, number>;
   suggested: number;
   open_todos?: number;
+}
+
+// Predictive ML models
+export interface ModelStatusEntry {
+  status: "trained" | "not_trained";
+  version?: number;
+  trained_at?: string;
+  features: string[];
+  threshold?: number;
+  min_train_rows?: number;
+}
+
+export interface ModelStatus {
+  models: Record<string, ModelStatusEntry>;
+}
+
+export interface ModelEvaluation {
+  status: "ok" | "no_failures_yet";
+  detail?: string;
+  results?: Record<string, {
+    status: "evaluated" | "not_trained";
+    true_positives?: number;
+    false_positives?: number;
+    false_negatives?: number;
+    precision?: number;
+    recall?: number;
+  }>;
 }
 
 export type WsEvent =
