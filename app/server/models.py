@@ -422,7 +422,8 @@ class SensorBaseline(Base):
 class ComponentHealth(Base):
     """Latest PME health scores per vehicle (upserted by predictor).
     Scores are 0–100 higher=healthier. battery_rul_days is an advisory
-    window from score buckets — not electrochemical RUL."""
+    window from score buckets — not electrochemical RUL.
+    *_lo / *_hi are fuzzy RUL bounds (pessimistic / optimistic)."""
     __tablename__ = "component_health"
 
     vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"),
@@ -430,9 +431,15 @@ class ComponentHealth(Base):
     battery_score = Column(Float)
     brake_score = Column(Float)
     oil_score = Column(Float)
-    battery_rul_days = Column(Integer)  # advisory days only
-    brake_remaining_km = Column(Integer)
-    oil_remaining_km = Column(Integer)
+    battery_rul_days = Column(Integer)  # advisory days only (expected)
+    battery_rul_days_lo = Column(Integer)  # pessimistic advisory
+    battery_rul_days_hi = Column(Integer)  # optimistic advisory
+    brake_remaining_km = Column(Integer)   # expected
+    brake_remaining_km_lo = Column(Integer)
+    brake_remaining_km_hi = Column(Integer)
+    oil_remaining_km = Column(Integer)     # expected
+    oil_remaining_km_lo = Column(Integer)
+    oil_remaining_km_hi = Column(Integer)
     brake_energy_mj_total = Column(Float, nullable=False, default=0.0)
     drivers = Column(JSONB, default=dict)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)

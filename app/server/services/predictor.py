@@ -1,12 +1,16 @@
 """
 PREDICT — Predictive Maintenance Engine (physics / heuristic models).
 
-Three component health scorers (0–100, higher = healthier) + remaining-km /
-advisory days:
+Three component health scorers (0–100, higher = healthier) + fuzzy RUL:
   battery  resting voltage, crank drop, recovery, short-trip drain
            (advisory days are score buckets — not electrochemical RUL)
   brakes   cumulative friction KE since last pad service (regen subtracted)
   oil      distance schedule + thermal/cold/idle/load stress (not oil chemistry)
+
+Fuzzy RUL: optimistic / expected / pessimistic from wear-rate percentiles
+(or advisory score ± uncertainty for battery). 30-day baseline z-scores
+accelerate oil wear; cross-component links (heat→oil/brakes, low battery→
+phantom DTC note) are recorded in drivers.
 
 Triggers (never on the per-packet TCP hot path):
   • trip close  → brake energy for that trip + full vehicle refresh
@@ -35,6 +39,7 @@ from server.models import (
     DrivingEventType,
     Rule,
     RuleType,
+    SensorBaseline,
     Severity,
     Trip,
     Vehicle,
@@ -86,6 +91,48 @@ def _advisory_days(score: float) -> int:
     if score >= 15:
         return 7
     return 3
+
+
+def _advisory_range(score: float) -> tuple[int, int, int]:
+    """Pessimistic / expected / optimistic advisory days from score ± uncertainty."""
+    expected = _advisory_days(score)
+    lo = _advisory_days(_clamp(score - 12.0))
+    hi = _advisory_days(_clamp(score + 12.0))
+    return min(lo, expected), expected, max(hi, expected)
+
+
+def _percentile(values: list[float], p: float) -> float:
+    """Linear-interpolated percentile; p in [0, 100]. Assumes non-empty."""
+    xs = sorted(values)
+    if len(xs) == 1:
+        return xs[0]
+    rank = (p / 100.0) * (len(xs) - 1)
+    lo_i = int(rank)
+    hi_i = min(lo_i + 1, len(xs) - 1)
+    frac = rank - lo_i
+    return xs[lo_i] * (1.0 - frac) + xs[hi_i] * frac
+
+
+def _fuzzy_remaining_from_rates(
+    remaining_budget: float,
+    rates: list[float],
+) -> tuple[Optional[int], Optional[int], Optional[int]]:
+    """Map budget / wear-rate → (pessimistic_lo, expected, optimistic_hi) remaining units.
+
+    Lower rate → more remaining (optimistic). Higher rate → less (pessimistic).
+    """
+    positive = [r for r in rates if r > 1e-12]
+    if remaining_budget <= 0 or not positive:
+        return None, None, None
+    mean_rate = sum(positive) / len(positive)
+    opt_rate = _percentile(positive, 10.0)   # gentle wear
+    pes_rate = _percentile(positive, 90.0)   # harsh wear
+    expected = int(max(0, remaining_budget / mean_rate))
+    optimistic = int(max(0, remaining_budget / opt_rate))
+    pessimistic = int(max(0, remaining_budget / pes_rate))
+    lo = min(pessimistic, expected)
+    hi = max(optimistic, expected)
+    return lo, expected, hi
 
 
 def _regen_fraction(vehicle: Vehicle, cfg: dict[str, float]) -> float:
@@ -234,7 +281,8 @@ async def _recovery_seconds(
 
 async def score_battery(
     session: AsyncSession, vehicle: Vehicle, cfg: dict[str, float],
-) -> tuple[Optional[float], Optional[int], dict[str, Any]]:
+) -> tuple[Optional[float], Optional[int], Optional[int], Optional[int], dict[str, Any]]:
+    """Returns score, rul_lo, advisory (expected), rul_hi, drivers."""
     sensor = await _pick_voltage_sensor(session, vehicle.id)
     drivers: dict[str, Any] = {
         "sensor": sensor,
@@ -243,7 +291,9 @@ async def score_battery(
 
     if not sensor:
         # Unknown — do not invent a healthy score
-        return None, None, {**drivers, "reason": "no_voltage_data", "top_reason": "No voltage data"}
+        return None, None, None, None, {
+            **drivers, "reason": "no_voltage_data", "top_reason": "No voltage data",
+        }
 
     resting = await _resting_voltage(session, vehicle.id, sensor)
     drops = await _crank_drops(session, vehicle.id, sensor, days=14)
@@ -270,7 +320,7 @@ async def score_battery(
 
     # Need at least one voltage-derived signal to score
     if resting is None and avg_drop is None and recovery is None:
-        return None, None, {
+        return None, None, None, None, {
             **drivers,
             "reason": "insufficient_voltage_signals",
             "top_reason": "Insufficient voltage signals",
@@ -310,7 +360,7 @@ async def score_battery(
         score -= 5
 
     score = _clamp(score)
-    advisory = _advisory_days(score)
+    rul_lo, advisory, rul_hi = _advisory_range(score)
     drivers.update({
         "resting_v": round(resting, 3) if resting is not None else None,
         "crank_drop_v": round(avg_drop, 3) if avg_drop is not None else None,
@@ -318,6 +368,8 @@ async def score_battery(
         "recovery_s": round(recovery, 1) if recovery is not None else None,
         "short_trip_ratio_7d": round(short_ratio, 3),
         "trips_7d": len(trips),
+        "rul_lo_days": rul_lo,
+        "rul_hi_days": rul_hi,
     })
     if resting is not None and resting < 12.2:
         drivers["top_reason"] = "Low resting voltage"
@@ -330,7 +382,7 @@ async def score_battery(
     else:
         drivers["top_reason"] = "Battery within normal range"
 
-    return score, advisory, drivers
+    return score, rul_lo, advisory, rul_hi, drivers
 
 
 # ── Brake model ───────────────────────────────────────────────────────────────
@@ -430,7 +482,8 @@ async def accumulate_brake_energy_for_trip(
 
 async def score_brakes(
     session: AsyncSession, vehicle: Vehicle, cfg: dict[str, float],
-) -> tuple[float, Optional[int], dict[str, Any]]:
+) -> tuple[float, Optional[int], Optional[int], Optional[int], dict[str, Any]]:
+    """Returns score, remaining_km_lo, remaining_km (expected), remaining_km_hi, drivers."""
     health = await _get_or_create_health(session, vehicle.id)
     pad_mj = vehicle.brake_pad_capacity_mj or cfg["pad_mj"]
     total = float(health.brake_energy_mj_total or 0.0)
@@ -438,6 +491,7 @@ async def score_brakes(
     regen = _regen_fraction(vehicle, cfg)
 
     since = datetime.now(timezone.utc) - timedelta(days=7)
+    since_30 = datetime.now(timezone.utc) - timedelta(days=30)
     trips = list((await session.execute(
         select(Trip).where(
             Trip.vehicle_id == vehicle.id,
@@ -464,12 +518,39 @@ async def score_brakes(
         )
     )).scalars().all()
 
-    remaining_km: Optional[int] = None
+    # Per-trip MJ/km rates over 30d for fuzzy RUL
+    wear_30 = list((await session.execute(
+        select(ComponentWearEvent).where(
+            ComponentWearEvent.vehicle_id == vehicle.id,
+            ComponentWearEvent.component == "brakes",
+            ComponentWearEvent.event_kind == "wear",
+            ComponentWearEvent.ts >= since_30,
+        )
+    )).scalars().all())
+    trip_rates: list[float] = []
+    for e in wear_30:
+        m = e.metric or {}
+        emj = float(m.get("energy_mj", 0) or 0)
+        dkm = float(m.get("distance_km", 0) or 0)
+        if emj > 0 and dkm > 0.5:
+            trip_rates.append(emj / dkm)
+
     remaining_mj = max(0.0, pad_mj - total)
-    if dist_7d > 1 and energy_7d > 0:
-        mj_per_100 = energy_7d / dist_7d * 100.0
-        if mj_per_100 > 1e-9:
-            remaining_km = int(max(0, (remaining_mj / mj_per_100) * 100))
+    remaining_lo: Optional[int] = None
+    remaining_km: Optional[int] = None
+    remaining_hi: Optional[int] = None
+
+    if trip_rates:
+        remaining_lo, remaining_km, remaining_hi = _fuzzy_remaining_from_rates(
+            remaining_mj, trip_rates,
+        )
+    elif dist_7d > 1 and energy_7d > 0:
+        mj_per_km = energy_7d / dist_7d
+        if mj_per_km > 1e-9:
+            remaining_km = int(max(0, remaining_mj / mj_per_km))
+            # Single-rate fallback: ±30% wear intensity band
+            remaining_lo = int(max(0, remaining_mj / (mj_per_km * 1.3)))
+            remaining_hi = int(max(0, remaining_mj / (mj_per_km * 0.7)))
 
     drivers = {
         "energy_mj_total": round(total, 3),
@@ -478,21 +559,87 @@ async def score_brakes(
         "regen_fraction": round(regen, 3),
         "harsh_brake_7d": len(harsh_7d),
         "distance_km_7d": round(dist_7d, 1),
+        "trip_rate_samples": len(trip_rates),
+        "remaining_km_lo": remaining_lo,
+        "remaining_km_hi": remaining_hi,
         "top_reason": (
             "High braking energy this week" if energy_7d > 2
             else "Frequent hard braking" if len(harsh_7d) >= 8
             else "Brake wear within normal range"
         ),
     }
-    return score, remaining_km, drivers
+    return score, remaining_lo, remaining_km, remaining_hi, drivers
 
 
 # ── Oil model (schedule + stress heuristics — not oil chemistry) ──────────────
+BASELINE_Z_WEAR_SENSORS = ("coolant_temperature", "engine_oil_temperature")
+BASELINE_Z_WEAR_THRESHOLD = 2.0
+BASELINE_Z_MAX_MULT = 1.5
+BASELINE_RECENT_HOURS = 3
+
+
+async def _thermal_baseline_multiplier(
+    session: AsyncSession, vehicle_id: int,
+) -> tuple[float, dict[str, Any]]:
+    """Wear-rate multiplier from 30-day baseline z-scores (1.0–1.5).
+
+    Sustained elevation of coolant/oil temp vs this car's own baseline
+    accelerates oil stress wear without hardcoded absolute thresholds.
+    """
+    info: dict[str, Any] = {"sensors": {}, "multiplier": 1.0}
+    max_z = 0.0
+    for st in BASELINE_Z_WEAR_SENSORS:
+        bl = (await session.execute(
+            select(SensorBaseline).where(
+                SensorBaseline.vehicle_id == vehicle_id,
+                SensorBaseline.sensor_type == st,
+                SensorBaseline.window == "30d",
+            )
+        )).scalar_one_or_none()
+        if bl is None or bl.std is None or bl.std < 1e-9:
+            continue
+        try:
+            row = (await session.execute(text(
+                "SELECT avg(avg_value) FROM sensor_readings_1h "
+                "WHERE vehicle_id = :vid AND sensor_type = :st "
+                "  AND bucket >= now() - make_interval(hours => :h)"
+            ), {"vid": vehicle_id, "st": st, "h": BASELINE_RECENT_HOURS})).first()
+        except Exception:
+            row = None
+        if not row or row[0] is None:
+            row = (await session.execute(text(
+                "SELECT avg(value) FROM sensor_readings "
+                "WHERE vehicle_id = :vid AND sensor_type = :st "
+                "  AND timestamp >= now() - make_interval(hours => :h)"
+            ), {"vid": vehicle_id, "st": st, "h": BASELINE_RECENT_HOURS})).first()
+        if not row or row[0] is None:
+            continue
+        z = (float(row[0]) - float(bl.mean)) / float(bl.std)
+        info["sensors"][st] = {
+            "z": round(z, 2),
+            "mean": round(float(bl.mean), 2),
+            "recent": round(float(row[0]), 2),
+        }
+        if z > max_z:
+            max_z = z
+
+    mult = 1.0
+    if max_z >= BASELINE_Z_WEAR_THRESHOLD:
+        # z=2 → 1.1, z=4 → 1.5 (capped)
+        mult = 1.0 + min(0.5, 0.1 + (max_z - BASELINE_Z_WEAR_THRESHOLD) * 0.2)
+        mult = min(BASELINE_Z_MAX_MULT, max(1.0, mult))
+
+    info["max_z"] = round(max_z, 2)
+    info["multiplier"] = round(mult, 3)
+    return mult, info
+
+
 async def score_oil(
     session: AsyncSession, vehicle: Vehicle, cfg: dict[str, float],
-) -> tuple[float, Optional[int], dict[str, Any]]:
+) -> tuple[float, Optional[int], Optional[int], Optional[int], dict[str, Any]]:
     """Distance-based service window plus thermal/cold/idle/load stress penalties.
-    Not a viscosity/TAN/chemistry model; oil_capacity_l is unused."""
+    Not a viscosity/TAN/chemistry model; oil_capacity_l is unused.
+    Returns score, remaining_km_lo, remaining_km, remaining_km_hi, drivers."""
     interval = cfg["oil_interval_km"]
     sample_period = max(0.5, float(settings.TELEMETRY_SAMPLE_SECONDS))
     # Current odometer
@@ -548,6 +695,10 @@ async def score_oil(
                 thermal_min = max(thermal_min, float(row[0]))
 
     thermal_pen = min(15.0, thermal_min * 0.5)
+
+    # Baseline-relative wear acceleration (coolant/oil temp vs 30d norm)
+    baseline_mult, baseline_info = await _thermal_baseline_multiplier(session, vehicle.id)
+    thermal_pen *= baseline_mult
     score -= thermal_pen
 
     trips = list((await session.execute(
@@ -613,14 +764,52 @@ async def score_oil(
 
     score = _clamp(score)
 
-    # Remaining km until score ~20 at current pace
+    # Remaining km until score ~20; fuzzy band from stress intensity
+    remaining_lo: Optional[int] = None
     remaining_km: Optional[int] = None
+    remaining_hi: Optional[int] = None
+    stress_pen = thermal_pen + cold_pen + idle_pen + load_pen
     if km_since > 50 and score < 100:
         wear_per_km = (100.0 - score) / max(km_since, 1.0)
         if wear_per_km > 1e-9:
             remaining_km = int(max(0, (score - 20.0) / wear_per_km))
+            # Optimistic: distance-only wear (less stress); pessimistic: extra stress
+            dist_only_wear = (distance_pct * 60.0) / max(km_since, 1.0)
+            if dist_only_wear > 1e-9:
+                remaining_hi = int(max(0, (score - 20.0) / dist_only_wear))
+            else:
+                remaining_hi = remaining_km
+            pes_wear = wear_per_km * max(1.0, baseline_mult) * (
+                1.15 if stress_pen >= 8 else (1.05 if stress_pen >= 3 else 1.0)
+            )
+            remaining_lo = int(max(0, (score - 20.0) / pes_wear))
+            if remaining_hi is not None:
+                remaining_hi = max(remaining_hi, remaining_km)
+            remaining_lo = min(remaining_lo, remaining_km)
     elif score >= 90:
         remaining_km = int(max(0, interval - km_since))
+        remaining_lo = int(max(0, remaining_km * 0.85))
+        remaining_hi = int(max(0, remaining_km * 1.1))
+
+    # Apply baseline multiplier to shrink remaining distance when hot vs baseline
+    if baseline_mult > 1.0 and remaining_km is not None:
+        base_mid = remaining_km
+        base_lo = remaining_lo if remaining_lo is not None else remaining_km
+        base_hi = remaining_hi if remaining_hi is not None else remaining_km
+        # Expected uses full mult; optimistic softer; pessimistic harder
+        remaining_km = int(max(0, base_mid / baseline_mult))
+        remaining_hi = int(max(0, base_hi / max(1.0, baseline_mult * 0.85)))
+        remaining_lo = int(max(0, base_lo / min(BASELINE_Z_MAX_MULT, baseline_mult * 1.15)))
+        remaining_hi = max(remaining_hi, remaining_km)
+        remaining_lo = min(remaining_lo, remaining_km)
+
+    top_reason = (
+        "Oil change due by distance" if distance_pct > 0.7
+        else "Oil wear accelerated by overheating trend" if baseline_mult > 1.05
+        else "Frequent short cold trips" if cold_short >= 5
+        else "High thermal stress" if thermal_pen >= 5
+        else "Oil within service window"
+    )
 
     drivers = {
         "km_since_change": round(km_since, 1),
@@ -629,15 +818,14 @@ async def score_oil(
         "thermal_minutes_7d": round(thermal_min, 1),
         "idle_ratio_7d": round(idle_ratio, 3),
         "load_penalty": round(load_pen, 2),
+        "baseline_wear": baseline_info,
+        "baseline_multiplier": round(baseline_mult, 3),
+        "remaining_km_lo": remaining_lo,
+        "remaining_km_hi": remaining_hi,
         "model": "schedule_plus_stress",
-        "top_reason": (
-            "Oil change due by distance" if distance_pct > 0.7
-            else "Frequent short cold trips" if cold_short >= 5
-            else "High thermal stress" if thermal_pen >= 5
-            else "Oil within service window"
-        ),
+        "top_reason": top_reason,
     }
-    return score, remaining_km, drivers
+    return score, remaining_lo, remaining_km, remaining_hi, drivers
 
 
 # ── Persist + fire ────────────────────────────────────────────────────────────
@@ -705,9 +893,43 @@ async def update_vehicle(
         if trip and trip.vehicle_id == vehicle_id:
             await accumulate_brake_energy_for_trip(session, vehicle, trip, cfg)
 
-    batt_score, batt_advisory, batt_drv = await score_battery(session, vehicle, cfg)
-    brake_score, brake_km, brake_drv = await score_brakes(session, vehicle, cfg)
-    oil_score, oil_km, oil_drv = await score_oil(session, vehicle, cfg)
+    batt_score, batt_lo, batt_advisory, batt_hi, batt_drv = await score_battery(
+        session, vehicle, cfg,
+    )
+    brake_score, brake_lo, brake_km, brake_hi, brake_drv = await score_brakes(
+        session, vehicle, cfg,
+    )
+    oil_score, oil_lo, oil_km, oil_hi, oil_drv = await score_oil(session, vehicle, cfg)
+
+    # ── Cross-component contamination ─────────────────────────────────────────
+    baseline_mult = float(oil_drv.get("baseline_multiplier") or 1.0)
+    if baseline_mult > 1.05:
+        oil_drv["cross_component"] = "Oil wear accelerated by overheating trend"
+        if oil_drv.get("top_reason") == "Oil within service window":
+            oil_drv["top_reason"] = "Oil wear accelerated by overheating trend"
+
+    if batt_score is not None and batt_score < 40:
+        batt_drv["phantom_dtc_risk"] = True
+        batt_drv["cross_component"] = (
+            "Low battery may trigger phantom electrical faults — verify voltage "
+            "before chasing DTCs"
+        )
+        # Note only — do not suppress real DTCs
+
+    # Cooling stress also nudges brake remaining slightly pessimistic when very hot
+    # (fade / more pad use) — keep subtle and explainable
+    if baseline_mult > 1.2 and brake_km is not None:
+        fade = min(1.15, 1.0 + (baseline_mult - 1.0) * 0.3)
+        brake_lo = int(max(0, (brake_lo if brake_lo is not None else brake_km) / fade))
+        brake_km = int(max(0, brake_km / fade))
+        if brake_hi is not None:
+            brake_hi = max(brake_hi, brake_km)
+        brake_drv["cross_component"] = (
+            f"Brake RUL tightened slightly due to elevated thermal baseline "
+            f"(×{baseline_mult:.2f})"
+        )
+        brake_drv["remaining_km_lo"] = brake_lo
+        brake_drv["remaining_km_hi"] = brake_hi
 
     health = await _get_or_create_health(session, vehicle_id)
     prev_batt = health.battery_score
@@ -718,8 +940,14 @@ async def update_vehicle(
     health.brake_score = round(brake_score, 1)
     health.oil_score = round(oil_score, 1)
     health.battery_rul_days = batt_advisory  # advisory window, not physical RUL
+    health.battery_rul_days_lo = batt_lo
+    health.battery_rul_days_hi = batt_hi
     health.brake_remaining_km = brake_km
+    health.brake_remaining_km_lo = brake_lo
+    health.brake_remaining_km_hi = brake_hi
     health.oil_remaining_km = oil_km
+    health.oil_remaining_km_lo = oil_lo
+    health.oil_remaining_km_hi = oil_hi
     health.drivers = {
         "battery": batt_drv,
         "brakes": brake_drv,
@@ -833,18 +1061,24 @@ async def reset_component(
         health.brake_energy_mj_total = 0.0
         health.brake_score = 100.0
         health.brake_remaining_km = None
+        health.brake_remaining_km_lo = None
+        health.brake_remaining_km_hi = None
         vehicle.last_brake_service_at = now
         if odometer is not None:
             vehicle.last_brake_service_odo = odometer
     elif component == "oil":
         health.oil_score = 100.0
         health.oil_remaining_km = None
+        health.oil_remaining_km_lo = None
+        health.oil_remaining_km_hi = None
         vehicle.last_oil_change_at = now
         if odometer is not None:
             vehicle.last_oil_change_odo = odometer
     elif component == "battery":
         health.battery_score = 100.0
         health.battery_rul_days = 90  # advisory after service reset
+        health.battery_rul_days_lo = 90
+        health.battery_rul_days_hi = 90
     else:
         return
 
@@ -880,8 +1114,14 @@ def prognostics_dict(h: Optional[ComponentHealth]) -> Optional[dict]:
         "brake_score": h.brake_score,
         "oil_score": h.oil_score,
         "battery_rul_days": h.battery_rul_days,
+        "battery_rul_days_lo": h.battery_rul_days_lo,
+        "battery_rul_days_hi": h.battery_rul_days_hi,
         "brake_remaining_km": h.brake_remaining_km,
+        "brake_remaining_km_lo": h.brake_remaining_km_lo,
+        "brake_remaining_km_hi": h.brake_remaining_km_hi,
         "oil_remaining_km": h.oil_remaining_km,
+        "oil_remaining_km_lo": h.oil_remaining_km_lo,
+        "oil_remaining_km_hi": h.oil_remaining_km_hi,
         "brake_energy_mj_total": h.brake_energy_mj_total,
         "drivers": h.drivers or {},
         "updated_at": h.updated_at.isoformat() if h.updated_at else None,

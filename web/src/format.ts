@@ -20,6 +20,38 @@ export function fmtValue(v: number | null | undefined, decimals = 0): string {
   });
 }
 
+/** Fuzzy RUL: "between X–Y km" when lo/hi differ; else "~N km". */
+export function fmtKmRange(
+  expected: number | null | undefined,
+  lo?: number | null,
+  hi?: number | null,
+): string | null {
+  if (expected == null && lo == null && hi == null) return null;
+  const mid = expected ?? lo ?? hi!;
+  const a = lo ?? mid;
+  const b = hi ?? mid;
+  if (a !== b) {
+    return `between ${a.toLocaleString()}–${b.toLocaleString()} km`;
+  }
+  return `~${mid.toLocaleString()} km`;
+}
+
+/** Fuzzy advisory days: "between X–Yd" or "~Nd". */
+export function fmtDaysRange(
+  expected: number | null | undefined,
+  lo?: number | null,
+  hi?: number | null,
+): string | null {
+  if (expected == null && lo == null && hi == null) return null;
+  const mid = expected ?? lo ?? hi!;
+  const a = lo ?? mid;
+  const b = hi ?? mid;
+  if (a !== b) {
+    return `Advisory ${a}–${b}d`;
+  }
+  return `Advisory ~${mid}d`;
+}
+
 export function fmtDuration(seconds: number | null | undefined): string {
   if (!seconds && seconds !== 0) return "—";
   const m = Math.round(seconds / 60);

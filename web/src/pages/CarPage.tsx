@@ -8,7 +8,7 @@ import HealthRing from "../components/HealthRing";
 import ScoreRing from "../components/ScoreRing";
 import SensorChart from "../components/SensorChart";
 import VitalTile from "../components/VitalTile";
-import { HEALTH_META, fmtDateTime, timeAgo } from "../format";
+import { HEALTH_META, fmtDateTime, fmtDaysRange, fmtKmRange, timeAgo } from "../format";
 import type { LiveState, TimelineEvent, Vitals } from "../types";
 import { useWs } from "../ws";
 
@@ -149,29 +149,44 @@ export default function CarPage() {
             <ScoreRing
               label="Battery"
               score={prognostics?.battery_score}
-              detail={
-                prognostics?.battery_rul_days != null
-                  ? `Advisory ~${prognostics.battery_rul_days}d · ${prognostics.drivers?.battery?.top_reason ?? ""}`
-                  : prognostics?.drivers?.battery?.top_reason
-              }
+              detail={(() => {
+                const range = fmtDaysRange(
+                  prognostics?.battery_rul_days,
+                  prognostics?.battery_rul_days_lo,
+                  prognostics?.battery_rul_days_hi,
+                );
+                const reason = prognostics?.drivers?.battery?.top_reason ?? "";
+                if (range && reason) return `${range} · ${reason}`;
+                return range ?? (reason || undefined);
+              })()}
             />
             <ScoreRing
               label="Brakes"
               score={prognostics?.brake_score}
-              detail={
-                prognostics?.brake_remaining_km != null
-                  ? `~${prognostics.brake_remaining_km.toLocaleString()} km · ${prognostics.drivers?.brakes?.top_reason ?? ""}`
-                  : prognostics?.drivers?.brakes?.top_reason
-              }
+              detail={(() => {
+                const range = fmtKmRange(
+                  prognostics?.brake_remaining_km,
+                  prognostics?.brake_remaining_km_lo,
+                  prognostics?.brake_remaining_km_hi,
+                );
+                const reason = prognostics?.drivers?.brakes?.top_reason ?? "";
+                if (range && reason) return `${range} · ${reason}`;
+                return range ?? (reason || undefined);
+              })()}
             />
             <ScoreRing
               label="Oil"
               score={prognostics?.oil_score}
-              detail={
-                prognostics?.oil_remaining_km != null
-                  ? `~${prognostics.oil_remaining_km.toLocaleString()} km · ${prognostics.drivers?.oil?.top_reason ?? ""}`
-                  : prognostics?.drivers?.oil?.top_reason
-              }
+              detail={(() => {
+                const range = fmtKmRange(
+                  prognostics?.oil_remaining_km,
+                  prognostics?.oil_remaining_km_lo,
+                  prognostics?.oil_remaining_km_hi,
+                );
+                const reason = prognostics?.drivers?.oil?.top_reason ?? "";
+                if (range && reason) return `${range} · ${reason}`;
+                return range ?? (reason || undefined);
+              })()}
             />
           </div>
         )}

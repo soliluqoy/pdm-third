@@ -144,6 +144,16 @@ CREATE INDEX IF NOT EXISTS ix_maintenance_log_failure_class
     ON maintenance_log (failure_class);
 """
 
+# Fuzzy RUL ranges on component_health (pessimistic lo / optimistic hi).
+_COMPONENT_HEALTH_COLUMN_MIGRATIONS = """
+ALTER TABLE component_health ADD COLUMN IF NOT EXISTS battery_rul_days_lo INTEGER;
+ALTER TABLE component_health ADD COLUMN IF NOT EXISTS battery_rul_days_hi INTEGER;
+ALTER TABLE component_health ADD COLUMN IF NOT EXISTS brake_remaining_km_lo INTEGER;
+ALTER TABLE component_health ADD COLUMN IF NOT EXISTS brake_remaining_km_hi INTEGER;
+ALTER TABLE component_health ADD COLUMN IF NOT EXISTS oil_remaining_km_lo INTEGER;
+ALTER TABLE component_health ADD COLUMN IF NOT EXISTS oil_remaining_km_hi INTEGER;
+"""
+
 
 async def init_db() -> None:
     logger.info("Initializing database schema…")
@@ -153,6 +163,8 @@ async def init_db() -> None:
         for statement in _split_sql(_VEHICLE_COLUMN_MIGRATIONS):
             await conn.execute(text(statement))
         for statement in _split_sql(_MAINTENANCE_COLUMN_MIGRATIONS):
+            await conn.execute(text(statement))
+        for statement in _split_sql(_COMPONENT_HEALTH_COLUMN_MIGRATIONS):
             await conn.execute(text(statement))
         script = _TIMESCALE_SQL.format(
             compress_days=settings.COMPRESS_AFTER_DAYS,

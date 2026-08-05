@@ -55,8 +55,14 @@ export interface Prognostics {
   brake_score: number | null;
   oil_score: number | null;
   battery_rul_days: number | null;
+  battery_rul_days_lo?: number | null;
+  battery_rul_days_hi?: number | null;
   brake_remaining_km: number | null;
+  brake_remaining_km_lo?: number | null;
+  brake_remaining_km_hi?: number | null;
   oil_remaining_km: number | null;
+  oil_remaining_km_lo?: number | null;
+  oil_remaining_km_hi?: number | null;
   brake_energy_mj_total?: number | null;
   drivers: {
     battery?: { top_reason?: string; [k: string]: unknown };
