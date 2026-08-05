@@ -23,7 +23,11 @@ from server.catalog import decode_record
 from server.config import settings
 from server.db import async_session_factory
 from server.models import DtcEvent, SensorReading, Vehicle
-from server.rules import evaluate_dtc, evaluate_telemetry
+from server.rules import (
+    evaluate_dtc,
+    evaluate_telemetry,
+    evaluate_unauthorized_movement,
+)
 from server.services import trips
 from server.services.health import recompute_and_broadcast
 from server.state import live_store
@@ -149,6 +153,12 @@ async def handle_records(imei: str, records: list[AvlRecord]) -> None:
                     session,
                     vehicle_id=vehicle.id, vehicle_name=vehicle.name,
                     sensors=rd.sensors, units=rd.units, ts=rd.timestamp,
+                )
+                await evaluate_unauthorized_movement(
+                    session,
+                    vehicle_id=vehicle.id, vehicle_name=vehicle.name,
+                    ignition=rd.ignition, movement=rd.movement,
+                    gps_speed=rd.speed, sensors=rd.sensors, ts=rd.timestamp,
                 )
 
         # ── 3. Vehicle bookkeeping + health ───────────────────────────────────

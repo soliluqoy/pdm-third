@@ -438,11 +438,13 @@ function RuleRow({ rule }: { rule: Rule }) {
   const isPredict = rule.key.startsWith("predict_");
   const unit = isScheduled
     ? "km"
-    : rule.rule_type === "behavior"
-      ? "events/day"
-      : isPredict
-        ? "score"
-        : "";
+    : rule.key === "unauthorized_movement"
+      ? "km/h"
+      : rule.rule_type === "behavior"
+        ? "events/day"
+        : isPredict
+          ? "score"
+          : "";
   const editableNumber = !isPredict && (rule.threshold_value !== null || isScheduled);
 
   return (

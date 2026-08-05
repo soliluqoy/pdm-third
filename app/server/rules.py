@@ -8,6 +8,9 @@ Rule types:
   BEHAVIOR   daily driving-event count
   ANOMALY    created/fired by the baselines service
 
+Special compound rule (THRESHOLD preset, dedicated evaluator):
+  unauthorized_movement — GPS/movement speed while ignition is off
+
 Firing → alerts.create_or_refresh (dedup by rule+vehicle: a still-active alert
 re-fires as occurrence_count += 1, never a spam row). When the condition
 clears for the same sustained duration, the alert auto-resolves.
@@ -236,6 +239,9 @@ async def evaluate_telemetry(
 
 
 async def _eval_threshold(session, rule, vehicle_id, vehicle_name, sensors, units, ts):
+    if rule.key == "unauthorized_movement":
+        # Compound ignition+speed check — handled by evaluate_unauthorized_movement.
+        return
     if not rule.sensor_type or rule.threshold_value is None or not rule.operator:
         return
     if rule.sensor_type not in sensors:
@@ -358,6 +364,103 @@ async def evaluate_dtc(
             message=f"The car reported diagnostic trouble code {dtc_code}.",
             trigger_value=None,
         )
+
+
+# ── Unauthorized movement (ignition off + speed/movement) ─────────────────────
+UNAUTHORIZED_MOVEMENT_KEY = "unauthorized_movement"
+
+
+def _movement_speed(
+    sensors: dict[str, float],
+    gps_speed: Optional[float],
+) -> Optional[float]:
+    """Prefer GNSS speed (tow/theft); fall back to IO/OBD vehicle speed."""
+    if gps_speed is not None:
+        return float(gps_speed)
+    for key in ("vehicle_speed", "vehicle_speed_obd"):
+        v = sensors.get(key)
+        if v is not None:
+            return float(v)
+    return None
+
+
+async def evaluate_unauthorized_movement(
+    session: AsyncSession,
+    *,
+    vehicle_id: int,
+    vehicle_name: str,
+    ignition: Optional[bool],
+    movement: Optional[bool],
+    gps_speed: Optional[float],
+    sensors: dict[str, float],
+    ts: datetime,
+) -> None:
+    """Fire when the car is moving while ignition is explicitly off.
+
+    Skips when ignition is unknown (None). Speed uses GNSS first, then IO/OBD;
+    Teltonika movement=True also counts as moving.
+    """
+    if ignition is None:
+        return
+
+    _timers_gc()
+    rules = [
+        r for r in await _rule_cache.get(session)
+        if r.key == UNAUTHORIZED_MOVEMENT_KEY and _applies(r, vehicle_id)
+    ]
+    if not rules:
+        return
+
+    speed = _movement_speed(sensors, gps_speed)
+    for rule in rules:
+        if rule.threshold_value is None or not rule.operator:
+            continue
+        op = OPERATORS.get(rule.operator)
+        if op is None:
+            continue
+
+        speed_ok = speed is not None and op(speed, rule.threshold_value)
+        moving = movement is True or speed_ok
+        condition = ignition is False and moving
+
+        if not condition:
+            _duration_reset(rule.id, vehicle_id)
+            if _clear_ok(rule.id, vehicle_id, ts, rule.duration_seconds or 0):
+                resolved = await alerts.auto_resolve(
+                    session, rule=rule, vehicle_id=vehicle_id,
+                )
+                if resolved is not None:
+                    await recompute_and_broadcast(
+                        session, vehicle_id,
+                        reason=f"auto-resolve:{rule.key}",
+                    )
+                    await session.commit()
+                    await hub.broadcast("alert_resolved", {
+                        "id": resolved.id, "vehicle_id": vehicle_id,
+                        "title": resolved.title, "auto": True,
+                    })
+                    _clear_reset(rule.id, vehicle_id)
+            continue
+
+        _clear_reset(rule.id, vehicle_id)
+        if not _duration_ok(rule.id, vehicle_id, ts, rule.duration_seconds or 0):
+            continue
+
+        speed_label = f"{speed:g} km/h" if speed is not None else "movement detected"
+        await _fire(
+            session,
+            vehicle_id=vehicle_id,
+            vehicle_name=vehicle_name,
+            rule=rule,
+            title=rule.name,
+            message=(
+                f"Vehicle moving with ignition off ({speed_label}; "
+                f"limit: {rule.operator} {rule.threshold_value:g} km/h). "
+                f"Possible tow or unauthorized movement."
+            ),
+            trigger_value=speed,
+        )
+        _duration_reset(rule.id, vehicle_id)
 
 
 # ── Behavior evaluation (daily event counts) ─────────────────────────────────
@@ -521,6 +624,17 @@ PRESETS: list[dict] = [
         "severity": Severity.INFO, "priority": WorkOrderPriority.LOW,
         "auto_work_order": False,
         "recommendation": None,   # FYI only — no work order drafted
+    },
+    {
+        "key": "unauthorized_movement", "rule_type": RuleType.THRESHOLD,
+        "name": "Unauthorized movement",
+        "description": "GPS/movement while ignition is off (possible tow or theft)",
+        "sensor_type": "gps_speed", "operator": ">",
+        "threshold_value": 5, "duration_seconds": 30,
+        "severity": Severity.WARNING, "priority": WorkOrderPriority.HIGH,
+        "auto_work_order": False,
+        "recommendation": "Check the car's live location. If you are not driving, "
+                          "the vehicle may be towed or moved without authorization.",
     },
     # Predictive maintenance (also ensured lazily by predictor.py)
     {
